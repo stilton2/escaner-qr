@@ -73,6 +73,8 @@ class PanelWifis(private val act: Activity) {
 
     private var redes: List<Red> = emptyList()
     private var cargada = false
+    /** Android's cap on saved networks (null = none); read with the list. See [es.kalvo.escanerqr.wifis.nucleo.Cupo]. */
+    private var tope: Int? = es.kalvo.escanerqr.wifis.nucleo.Cupo.TOPE_SI_NO_SE
     private var cargandoAhora = false
     private var visible = false
     private var filtro = 0 // 0 todas, 1 normales, 2 de otras apps (S-J5)
@@ -250,6 +252,7 @@ class PanelWifis(private val act: Activity) {
         act.fondo({
             // The wifi codes of the history, to say when each network was scanned (read-only, stays in the app).
             val historial = try { es.kalvo.escanerqr.Db.de(act).wifis() } catch (e: Throwable) { SemWifi.registrar("historial", e); emptyList() }
+            tope = Redes.tope()
             Redes.cargar(historial)
         }) { r ->
             cargandoAhora = false
@@ -293,10 +296,22 @@ class PanelWifis(private val act: Activity) {
             if (otras == 0 && filtro == 2) origenGrupo.check(200)
             // v2.8: other apps' suggestions vanish when that app is uninstalled; offer to pass them all at once.
             val sinPasar = redes.filter { it.sugerencia }.map { it.ssid }.toSet() - redes.filter { !it.sugerencia }.map { it.ssid }.toSet()
-            if (cargada && sinPasar.isNotEmpty()) avisos.addView(tarjetaAviso(
-                "${sinPasar.size} redes las guardó otra app (QR Bot…). Si desinstalas esa app, el móvil las olvida.",
-                "Pasarlas a redes normales",
-            ) { pasarTodas() })
+            if (cargada && sinPasar.isNotEmpty()) {
+                // v2.9: never offer more than fits (over Android's cap it deletes old networks without telling).
+                val huecos = es.kalvo.escanerqr.wifis.nucleo.Cupo.huecosEnBloque(tope, normales)
+                val tope = tope
+                val base = "${sinPasar.size} redes las guardó otra app (QR Bot…). Si desinstalas esa app, el móvil las olvida " +
+                    "(siguen en «Leídas» con su contraseña)."
+                if (tope == null || huecos >= sinPasar.size) avisos.addView(tarjetaAviso(base, "Pasarlas a redes normales") { pasarTodas() })
+                else if (huecos > 0) avisos.addView(tarjetaAviso(
+                    "$base Android solo deja $tope redes guardadas y tienes $normales: caben $huecos más " +
+                        "(dejo ${es.kalvo.escanerqr.wifis.nucleo.Cupo.RESERVA} libres para las que guardes tú).",
+                    "Pasar las $huecos más recientes",
+                ) { pasarTodas() })
+                else avisos.addView(tarjetaAviso(
+                    "$base Android solo deja $tope redes guardadas y tienes $normales: no caben más sin que Android borre " +
+                        "otras. Para pasar alguna, olvida antes las que no uses.", null, null))
+            }
             return
         }
         resumen.text = "Sin Shizuku no puedo ver tus wifis."
@@ -467,9 +482,15 @@ class PanelWifis(private val act: Activity) {
 
     /** Passes every other-app suggestion to a normal network, with the password from the history (see [PasarOtras]). */
     private fun pasarTodas() {
-        val plan = es.kalvo.escanerqr.wifis.nucleo.PasarOtras.plan(redes, leidas)
+        val todo = es.kalvo.escanerqr.wifis.nucleo.PasarOtras.plan(redes, leidas)
+        val huecos = es.kalvo.escanerqr.wifis.nucleo.Cupo.huecosEnBloque(tope, redes.count { !it.sugerencia })
+        // The most recently read first: they are the likeliest to be used again.
+        val plan = todo.copy(listas = todo.listas.take(huecos))
+        val noCaben = todo.listas.size - plan.listas.size
         val msg = buildString {
             append("Se guardan ${plan.listas.size} como redes normales del móvil, con la contraseña de tu historial.")
+            if (noCaben > 0) append("\n\n$noCaben no caben: Android solo deja $tope redes guardadas y, si se pasa, borra las más " +
+                "antiguas sin avisar. Se quedan como están.")
             if (plan.sinClave.isNotEmpty()) append("\n\n${plan.sinClave.size} no tienen contraseña en el historial y se quedan como están " +
                 "(se pueden pasar a mano desde su ficha).")
             append("\n\nNo se borra nada: las de la otra app siguen hasta que la desinstales.")

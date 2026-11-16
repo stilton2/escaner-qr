@@ -2,6 +2,7 @@ package es.kalvo.escanerqr.wifis
 
 import es.kalvo.escanerqr.wifis.nucleo.Combinar
 import es.kalvo.escanerqr.wifis.nucleo.Creadores
+import es.kalvo.escanerqr.wifis.nucleo.Cupo
 import es.kalvo.escanerqr.wifis.nucleo.Detalles
 import es.kalvo.escanerqr.wifis.nucleo.Escaneos
 import es.kalvo.escanerqr.wifis.nucleo.FilaHistorial
@@ -89,8 +90,38 @@ object Redes {
         return YaGuardada.buscar(ssid, normales, sug, claves, clave)
     }
 
+    /** Android's cap on saved networks (null = no cap), read once per app run. See [Cupo]. */
+    @Volatile private var topeLeido: Int? = null
+    @Volatile private var topeSabido = false
+
+    fun tope(): Int? {
+        if (!topeSabido) {
+            val r = Shell.run(Ordenes.tope())
+            topeLeido = Cupo.leerTope(r?.salida, r?.codigo ?: -1)
+            topeSabido = r != null && r.codigo == 0
+        }
+        return topeLeido
+    }
+
+    /** The normal networks right now, or null if Android does not answer. */
+    fun normalesAhora(): List<es.kalvo.escanerqr.wifis.nucleo.RedListada>? {
+        val l = Shell.run(Ordenes.listar()) ?: return null
+        return if (l.codigo == 0) ListaRedes.leer(l.salida) else null
+    }
+
+    /**
+     * Null if one more network fits; otherwise why not. Going over the cap would make Android delete the oldest saved
+     * network without telling (that is how saved networks were lost on 2026-11-16), so when in doubt it says no.
+     */
+    fun sinSitio(d: DatosRed): String? {
+        val normales = normalesAhora() ?: return "No pude ver cuántas redes hay guardadas; no guardo nada por si acaso."
+        val t = tope()
+        return if (Cupo.cabeUna(t, normales, d)) null else Cupo.textoLleno(t ?: normales.size)
+    }
+
     /** Saves a normal network: through the wifi service; if that call is not available, with `cmd wifi add-network`. */
     fun guardar(d: DatosRed): String? {
+        sinSitio(d)?.let { return it }
         val primero = try { Wifi.guardar(d); return null } catch (e: Throwable) { (e.cause ?: e).message ?: e.javaClass.simpleName }
         val argv = try { Ordenes.anadir(d) } catch (e: IllegalArgumentException) { return e.message ?: "datos no válidos" }
         val r = Shell.run(argv)
@@ -109,6 +140,7 @@ object Redes {
      * (like "Guardar") and connects to the saved one by its id. Null if the order went through, otherwise the reason.
      */
     fun guardarYConectar(d: DatosRed): String? {
+        sinSitio(d)?.let { return it }
         val argv = try { Ordenes.conectar(d) } catch (e: IllegalArgumentException) { return e.message ?: "datos no válidos" }
         val r = Shell.run(argv)
         if (r != null && r.codigo == 0) return null
@@ -168,9 +200,23 @@ object Redes {
     /** Saves several networks one by one ("Pasar"). [progreso] gets (done, total). Returns the failures (name → reason). */
     fun guardarVarias(lista: List<DatosRed>, progreso: (Int, Int) -> Unit): List<Pair<String, String>> {
         val fallos = ArrayList<Pair<String, String>>()
-        lista.forEachIndexed { i, d ->
-            guardar(d)?.let { fallos += d.ssid to it }
+        val inicio = normalesAhora() ?: return listOf("todas" to "no pude ver cuántas redes hay guardadas; no he pasado ninguna")
+        val antes = inicio.mapTo(HashSet()) { it.id }
+        // Never past the cap minus the reserve (see Cupo): over it Android deletes old networks without telling.
+        var huecos = Cupo.huecosEnBloque(tope(), inicio.size)
+        for ((i, d) in lista.withIndex()) {
+            if (huecos <= 0) { fallos += d.ssid to "no cabe: Android no deja guardar más redes"; progreso(i + 1, lista.size); continue }
+            val f = guardar(d)
+            if (f == null) huecos-- else fallos += d.ssid to f
             progreso(i + 1, lista.size)
+            // Safety net: if any network that was already saved has gone, stop at once.
+            if (i % 10 == 9 || i == lista.lastIndex) {
+                val ahora = normalesAhora()?.mapTo(HashSet()) { it.id } ?: continue
+                if (!ahora.containsAll(antes)) {
+                    lista.drop(i + 1).forEach { fallos += it.ssid to "parado: Android empezó a borrar redes viejas" }
+                    break
+                }
+            }
         }
         return fallos
     }

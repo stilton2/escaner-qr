@@ -6,6 +6,9 @@ package es.kalvo.escanerqr.wifis.nucleo
  */
 object Ordenes {
     fun listar() = listOf("cmd", "wifi", "list-networks")
+    /** Android's cap on saved networks (read-only). Prints a number; -1 = no cap. */
+    fun tope() = listOf("cmd", "overlay", "lookup", "com.android.wifi.resources",
+        "com.android.wifi.resources:integer/config_wifiMaxNumWifiConfigurations")
     fun volcado() = listOf("dumpsys", "wifi")
     /** Samsung's wifi service dump (dates and use per network). Read-only. */
     fun volcadoSamsung() = listOf("dumpsys", "sem_wifi")
