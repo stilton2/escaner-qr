@@ -29,7 +29,7 @@ class Ajustes(ctx: Context) {
     var linternaAlAbrir: Boolean get() = b("linternaAlAbrir", false); set(v) = pon("linternaAlAbrir", v)
     // S-J6
     /** Zoom in by itself when a code is seen but is too small to read. */
-    var zoomAuto: Boolean get() = b("zoomAuto", true); set(v) = pon("zoomAuto", v)
+    var zoomAuto: Boolean get() = b("zoomAuto", false); set(v) = pon("zoomAuto", v)
     /** Torch on by itself when the picture is dark (off by default). */
     var linternaAuto: Boolean get() = b("linternaAuto", false); set(v) = pon("linternaAuto", v)
     /** Only read the code touching the crosshair in the middle (off by default). */

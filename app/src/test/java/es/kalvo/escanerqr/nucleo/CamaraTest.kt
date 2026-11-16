@@ -69,19 +69,23 @@ class CamaraTest {
     }
 
     @Test fun zoomAutoAcercaCodigosPequenosDelCentro() {
-        val z = ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 1f, 10f, 2000)
+        val z = ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 1f, 10f, 2000, true)
         assertNotNull(z); assertEquals(1.6f, z!!, 1e-4f)      // step by step, not all at once
-        assertNull(ZoomAuto.siguiente(0.3f, 0.5f, 0.5f, 1f, 10f, 2000))          // already big enough
-        assertNull(ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 1f, 10f, 100))           // too soon after the last step
-        assertNull(ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 5f, 10f, 2000))          // at the top
-        assertEquals(3f, ZoomAuto.siguiente(0.05f, 0.5f, 0.5f, 2f, 3f, 2000)!!, 1e-4f) // never past the phone's maximum
+        assertNull(ZoomAuto.siguiente(0.3f, 0.5f, 0.5f, 1f, 10f, 2000, true))          // already big enough
+        assertNull(ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 1f, 10f, 100, true))           // too soon after the last step
+        assertNull(ZoomAuto.siguiente(0.1f, 0.5f, 0.5f, 5f, 10f, 2000, true))          // at the top
+        assertEquals(3f, ZoomAuto.siguiente(0.05f, 0.5f, 0.5f, 2f, 3f, 2000, true)!!, 1e-4f) // never past the phone's maximum
+    }
+
+    @Test fun zoomAutoApagadoNoPideNingunCambio() {
+        assertNull(ZoomAuto.siguiente(0.05f, 0.5f, 0.5f, 1f, 10f, 5000, false))
     }
 
     @Test fun zoomAutoNoSacaElCodigoDePantalla() {
         // Code at 0.3 from the middle: ×1.33 at most (0.4 / 0.3).
-        assertEquals(1.3333f, ZoomAuto.siguiente(0.1f, 0.8f, 0.5f, 1f, 10f, 2000)!!, 1e-3f)
+        assertEquals(1.3333f, ZoomAuto.siguiente(0.1f, 0.8f, 0.5f, 1f, 10f, 2000, true)!!, 1e-3f)
         // Almost at the edge: no zoom.
-        assertNull(ZoomAuto.siguiente(0.1f, 0.9f, 0.5f, 1f, 10f, 2000))
+        assertNull(ZoomAuto.siguiente(0.1f, 0.9f, 0.5f, 1f, 10f, 2000, true))
     }
 
     @Test fun linternaAutoSoloConOscuridadSeguida() {

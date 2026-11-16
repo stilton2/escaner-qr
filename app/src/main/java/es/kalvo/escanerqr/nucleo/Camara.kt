@@ -136,8 +136,8 @@ object ZoomAuto {
     const val ESPERA_MS = 700L
 
     /** The new zoom, or null to leave it. [lado] from [Cuadro.lado]; [cx], [cy] its centre (0–1). */
-    fun siguiente(lado: Float, cx: Float, cy: Float, zoom: Float, zoomMax: Float, msDesdeCambio: Long): Float? {
-        if (msDesdeCambio < ESPERA_MS || lado <= 0f || lado >= PEQUENO) return null
+    fun siguiente(lado: Float, cx: Float, cy: Float, zoom: Float, zoomMax: Float, msDesdeCambio: Long, activo: Boolean): Float? {
+        if (!activo || msDesdeCambio < ESPERA_MS || lado <= 0f || lado >= PEQUENO) return null
         val tope = min(zoomMax, TOPE)
         if (zoom >= tope * 0.98f) return null
         var k = min(1.6f, OBJETIVO / lado)

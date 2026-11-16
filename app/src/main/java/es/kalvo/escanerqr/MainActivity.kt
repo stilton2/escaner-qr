@@ -467,7 +467,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (!aj.zoomAuto || zoomDelUsuario || aj.frontal) return
         val z = c.cameraInfo.zoomState.value ?: return
-        val nuevo = ZoomAuto.siguiente(lado, grande.cx, grande.cy, z.zoomRatio, z.maxZoomRatio, ahora - ultimoZoomAuto) ?: return
+        val nuevo = ZoomAuto.siguiente(lado, grande.cx, grande.cy, z.zoomRatio, z.maxZoomRatio, ahora - ultimoZoomAuto, aj.zoomAuto) ?: return
         if (zoomBase == null) zoomBase = z.zoomRatio
         ultimoZoomAuto = ahora
         c.cameraControl.setZoomRatio(nuevo)

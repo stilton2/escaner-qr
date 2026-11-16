@@ -51,7 +51,7 @@ class PanelAjustes(private val act: MainActivity) {
             interruptor(this, "Usar la cámara de delante", null, aj.frontal) { aj.frontal = it }
             interruptor(this, "Encender la linterna al abrir", null, aj.linternaAlAbrir) { aj.linternaAlAbrir = it }
             interruptor(this, "Linterna automática con poca luz", "Se enciende sola si la imagen está oscura un momento", aj.linternaAuto) { aj.linternaAuto = it }
-            interruptor(this, "Acercar solo (zoom automático)", "Si ve un código pero es demasiado pequeño para leerlo, acerca la imagen poco a poco", aj.zoomAuto) { aj.zoomAuto = it }
+            interruptor(this, "Zoom automático (acercar si el código se ve pequeño)", "Apagado: el zoom solo cambia con la barra o el pellizco. Encendido: si ve un código pero es demasiado pequeño para leerlo, acerca poco a poco", aj.zoomAuto) { aj.zoomAuto = it }
         }
 
         col.addView(ui.titulo("Varios códigos juntos"))
