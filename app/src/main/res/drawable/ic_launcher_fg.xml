@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Own icon (S-J): four white viewfinder corners, a few code squares inside and an amber scan line.
+     Safe zone: 21..87 of 108. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- corners -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M30,42v-8a4,4 0 0,1 4,-4h8 M66,30h8a4,4 0 0,1 4,4v8 M78,66v8a4,4 0 0,1 -4,4h-8 M42,78h-8a4,4 0 0,1 -4,-4v-8" />
+    <!-- code squares -->
+    <path android:fillColor="#E6FFFFFF"
+        android:pathData="M38,38h12v12h-12z M58,38h12v12h-12z M38,58h12v12h-12z M58,58h5v5h-5z M65,65h5v5h-5z M58,65h5v5h-5z M65,58h5v5h-5z" />
+    <path android:fillColor="#FF1B5E20" android:pathData="M41,41h6v6h-6z M61,41h6v6h-6z M41,61h6v6h-6z" />
+    <!-- scan line -->
+    <path android:fillColor="#FFFFC107" android:pathData="M26,52.5h56v3h-56z" />
+</vector>

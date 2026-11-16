@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- No INTERNET permission: this app never talks to the network. Wifis go through Shizuku (shell user), no wifi permissions. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <!-- Wifis part: names of the apps that saved a network (any app with an icon) and opening Shizuku. -->
+    <queries>
+        <package android:name="moe.shizuku.privileged.api" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <!-- Self-check of the Wifis tab without the screen (only adb can start it): `adb shell am instrument -w
+         es.kalvo.escanerqr/.wifis.Diagnostico`. Prints only counts and error types, never names, places or passwords. -->
+    <instrumentation
+        android:name=".wifis.Diagnostico"
+        android:label="Diagnóstico de Wifis"
+        android:targetPackage="es.kalvo.escanerqr" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Escáner QR"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Compartir" a picture from the gallery, WhatsApp… to read the codes in it. -->
+            <intent-filter android:label="Leer código">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ResultadoActivity"
+            android:exported="false" />
+
+        <!-- Wifis part: the QR of a network, big and bright (data in memory, never in the intent). -->
+        <activity
+            android:name=".wifis.QrActivity"
+            android:exported="false" />
+
+        <!-- Hands the "share as QR" picture to the app you choose (read-only, one picture). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.ficheros"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/rutas" />
+        </provider>
+
+        <!-- Wifis part: serves the wifi QR picture from memory for "Compartir" (no file is written). -->
+        <provider
+            android:name=".wifis.QrProvider"
+            android:authorities="${applicationId}.qrwifi"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Shizuku hands its binder to the app through this provider (same as the other apps). -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>

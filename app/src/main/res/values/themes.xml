@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- S-J4: Material 3 with our own colours («estilo A»), no longer the wallpaper's. Light/dark as the phone or as chosen
+         in Ajustes; the colours are in values/colors.xml (light) and values-night/colors.xml (dark). -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/m_primario</item>
+        <item name="colorOnPrimary">@color/m_sobre_primario</item>
+        <item name="colorPrimaryContainer">@color/m_primario_cont</item>
+        <item name="colorOnPrimaryContainer">@color/m_sobre_primario_cont</item>
+        <item name="colorSecondary">@color/m_secundario</item>
+        <item name="colorOnSecondary">@color/m_sobre_secundario</item>
+        <item name="colorSecondaryContainer">@color/m_secundario_cont</item>
+        <item name="colorOnSecondaryContainer">@color/m_sobre_secundario_cont</item>
+        <item name="colorTertiary">@color/m_secundario</item>
+        <item name="colorOnTertiary">@color/m_sobre_secundario</item>
+        <item name="colorError">@color/error</item>
+        <item name="android:colorBackground">@color/fondo</item>
+        <item name="colorSurface">@color/fondo</item>
+        <item name="colorOnSurface">@color/texto</item>
+        <item name="colorOnSurfaceVariant">@color/texto_suave</item>
+        <item name="colorSurfaceVariant">@color/superficie_alta</item>
+        <item name="colorSurfaceContainerLowest">@color/fondo</item>
+        <item name="colorSurfaceContainerLow">@color/m_cont_bajo</item>
+        <item name="colorSurfaceContainer">@color/m_cont</item>
+        <item name="colorSurfaceContainerHigh">@color/m_cont_alto</item>
+        <item name="colorSurfaceContainerHighest">@color/m_cont_mas_alto</item>
+        <item name="colorOutline">@color/borde</item>
+        <item name="colorOutlineVariant">@color/linea</item>
+        <item name="android:windowBackground">@color/fondo</item>
+        <!-- The teal bar goes under the status bar: white icons on it in both modes. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

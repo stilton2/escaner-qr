@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «Estilo A» en claro (S-J4): solo si eliges «Claro» en Ajustes o el móvil va en modo claro. Misma barra y mismo ámbar. -->
+<resources>
+    <color name="barra">#1E6E63</color>
+    <color name="barra_texto">#CFE7E2</color>
+    <color name="barra_activa">#FFFFFF</color>
+    <color name="ambar">#F2B544</color>
+    <color name="sobre_ambar">#1E2224</color>
+    <color name="ambar_texto">#8A5A00</color>
+
+    <color name="fondo">#F3F5F4</color>
+    <color name="superficie">#FFFFFF</color>
+    <color name="superficie_alta">#E6EBE9</color>
+    <color name="borde">#B9C2BF</color>
+    <color name="linea">#E0E5E3</color>
+    <color name="texto">#1C2021</color>
+    <color name="texto_suave">#56605D</color>
+    <color name="texto_cuenta">#3C4442</color>
+
+    <color name="wifi_fondo">#D3EFE8</color>
+    <color name="wifi">#1E6E63</color>
+    <color name="enlace_fondo">#DCEBF6</color>
+    <color name="enlace">#1F5F8E</color>
+    <color name="equipo_fondo">#F6E7C4</color>
+    <color name="equipo_fondo_lista">#F6E7C4</color>
+    <color name="equipo">#7A5000</color>
+    <color name="gris_fondo">#E6EBE9</color>
+    <color name="gris">#3C4442</color>
+
+    <color name="aviso_fondo">#DCEFEA</color>
+    <color name="aviso_texto">#1E4F47</color>
+    <color name="ficha_fondo">#1E6E63</color>
+    <color name="ficha_texto">#FFFFFF</color>
+    <color name="error">#BA1A1A</color>
+
+    <color name="m_primario">#1E6E63</color>
+    <color name="m_sobre_primario">#FFFFFF</color>
+    <color name="m_primario_cont">#D3EFE8</color>
+    <color name="m_sobre_primario_cont">#00201B</color>
+    <color name="m_secundario">#8A5A00</color>
+    <color name="m_sobre_secundario">#FFFFFF</color>
+    <color name="m_secundario_cont">#F6E7C4</color>
+    <color name="m_sobre_secundario_cont">#2B1C00</color>
+    <color name="m_cont_bajo">#F7F9F8</color>
+    <color name="m_cont">#FFFFFF</color>
+    <color name="m_cont_alto">#EEF2F0</color>
+    <color name="m_cont_mas_alto">#E6EBE9</color>
+</resources>
