@@ -15,6 +15,7 @@ import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import es.kalvo.escanerqr.nucleo.Binario
 import es.kalvo.escanerqr.nucleo.Hallado
 import es.kalvo.escanerqr.nucleo.Lum
 import es.kalvo.escanerqr.nucleo.Plan
@@ -167,6 +168,8 @@ class Banco : Instrumentation() {
     private fun coincide(r: Pair<String, ByteArray?>, e: Esperado, carpeta: String): Boolean {
         if (e.bytes != null) {
             if (r.second != null && r.second!!.contentEquals(e.bytes)) return true
+            // S-J8: the app shows non-text content as hexadecimal (Binario) and gives no bytes for profiles img/cam.
+            if (Binario.bytes(r.first)?.contentEquals(e.bytes) == true) return true
             return limpio(r.first) == limpio(String(e.bytes, Charsets.ISO_8859_1)) || limpio(r.first) == limpio(String(e.bytes, Charsets.UTF_8))
         }
         val a = limpio(r.first); val b = limpio(e.texto ?: return false)
@@ -176,7 +179,8 @@ class Banco : Instrumentation() {
     }
 
     private val escape = Regex("<(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|DEL|U\\+[0-9A-F]+)>")
-    private fun limpio(s: String) = escape.replace(s, "").filter { it.code >= 32 && it.code != 127 && it != '(' && it != ')' && !it.isWhitespace() && it != '�' }
+    // S-J8: C1 control characters (128–159) too: the reader writes them as «<U+82>» (removed above), so the expected bytes must lose them as well.
+    private fun limpio(s: String) = escape.replace(s, "").filter { it.code >= 32 && it.code != 127 && it.code !in 128..159 && it != '(' && it != ')' && !it.isWhitespace() && it != '�' }
 
     // ---------- barrido: how small can a code get ----------
 

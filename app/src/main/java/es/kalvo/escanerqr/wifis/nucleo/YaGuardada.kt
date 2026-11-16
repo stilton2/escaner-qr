@@ -2,17 +2,30 @@ package es.kalvo.escanerqr.wifis.nucleo
 
 /**
  * What the phone already has with the same name as a wifi just read from a QR: a normal saved network,
- * and/or "suggestions" of other apps (QR Bot saved its wifis like that). We never know the old password,
- * so the screen only says "ya está guardada", never "es distinta".
+ * and/or "suggestions" of other apps (QR Bot saved its wifis like that).
+ * [mismaClave]: whether the saved normal network has the same password as the code (null = unknown or no normal network).
  */
-data class YaGuardada(val normal: Boolean, val sugeridaPor: List<String>) {
+data class YaGuardada(val normal: Boolean, val sugeridaPor: List<String>, val mismaClave: Boolean? = null) {
     val nada get() = !normal && sugeridaPor.isEmpty()
 
     companion object {
-        fun buscar(ssid: String, normales: List<RedListada>, sugerencias: List<Sugerencia>) = YaGuardada(
-            normal = normales.any { it.ssid == ssid },
-            sugeridaPor = sugerencias.filter { it.ssid == ssid }.map { it.paquete }.distinct(),
-        )
+        /** [claves] = saved passwords by networkId (may be empty if they could not be read); [clave] = the code's one. */
+        fun buscar(
+            ssid: String, normales: List<RedListada>, sugerencias: List<Sugerencia>,
+            claves: Map<Int, String> = emptyMap(), clave: String? = null,
+        ): YaGuardada {
+            val mias = normales.filter { it.ssid == ssid }
+            val guardadas = mias.mapNotNull { claves[it.id] }
+            val misma = when {
+                mias.isEmpty() || clave == null || guardadas.isEmpty() -> null
+                else -> guardadas.any { it == clave }
+            }
+            return YaGuardada(
+                normal = mias.isNotEmpty(),
+                sugeridaPor = sugerencias.filter { it.ssid == ssid }.map { it.paquete }.distinct(),
+                mismaClave = misma,
+            )
+        }
     }
 }
 

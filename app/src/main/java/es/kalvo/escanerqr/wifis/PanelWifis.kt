@@ -26,12 +26,18 @@ import es.kalvo.escanerqr.wifis.nucleo.Orden
 import es.kalvo.escanerqr.wifis.nucleo.OrdenRedes
 import es.kalvo.escanerqr.wifis.nucleo.Rango
 import es.kalvo.escanerqr.wifis.nucleo.Red
+import es.kalvo.escanerqr.wifis.nucleo.Leidas
+import es.kalvo.escanerqr.wifis.nucleo.WifiLeida
+import es.kalvo.escanerqr.wifis.nucleo.DesdeEscaner
+import com.google.android.material.button.MaterialButtonToggleGroup
 import rikka.shizuku.Shizuku
 
 /**
  * «Wifis» tab (what was the «Mis wifis» app until v2.0): the saved wifis with search, filters and a card per network
  * that opens its detail ([Ficha]). Nothing is kept on disk: every time it is opened it asks Android again (through Shizuku).
  * It only reads when the tab is shown, never while you are scanning.
+ * v2.7: two lists, «En el móvil» (the phone's saved networks, with their passwords) and «Leídas» (every wifi code in the
+ * history, scanned or imported; works without Shizuku).
  */
 class PanelWifis(private val act: Activity) {
     private val ui = Ui(act)
@@ -57,6 +63,13 @@ class PanelWifis(private val act: Activity) {
     private val vacio: android.widget.TextView
     private val botones: LinearLayout
     private val adaptador = Adaptador<Red> { fila(it) }
+    private val adaptadorL = Adaptador<WifiLeida> { filaLeida(it) }
+    /** 0 = «En el móvil», 1 = «Leídas». Remembered while the app is open. */
+    private var modo = 0
+    private var leidas: List<WifiLeida> = emptyList()
+    private val selector: MaterialButtonToggleGroup
+    private val btnMovil: MaterialButton
+    private val btnLeidas: MaterialButton
 
     private var redes: List<Red> = emptyList()
     private var cargada = false
@@ -89,6 +102,23 @@ class PanelWifis(private val act: Activity) {
         botones.addView(ua.botonIcono(es.kalvo.escanerqr.R.drawable.ic_buscar, "Buscar por nombre", ua.cText) { alternarBuscar() })
         root.addView(botones, MATCH_PARENT, WRAP_CONTENT)
         root.addView(dentro, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+        // The two lists (v2.7).
+        selector = MaterialButtonToggleGroup(act).apply { isSingleSelection = true; isSelectionRequired = true }
+        fun segmento(t: String, i: Int) = MaterialButton(act, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            id = 400 + i; text = t; isAllCaps = false; textSize = 15f; minHeight = ua.px(48)
+        }
+        btnMovil = segmento("En el móvil", 0); btnLeidas = segmento("Leídas", 1)
+        selector.addView(btnMovil, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        selector.addView(btnLeidas, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        selector.check(400)
+        selector.addOnButtonCheckedListener { _, id, marcado ->
+            if (!marcado) return@addOnButtonCheckedListener
+            modo = id - 400
+            lista.adapter = if (modo == 0) adaptador else adaptadorL
+            if (modo == 0 && !cargada) recargar() else { pintarEstado(); aplicarFiltro() }
+            lista.scrollToPosition(0)
+        }
+        dentro.addView(selector, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = ua.px(8) })
         avisos = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(0, ua.px(4), 0, 0) }
         dentro.addView(avisos)
 
@@ -186,7 +216,22 @@ class PanelWifis(private val act: Activity) {
     /** The tab is shown: read the networks if not read yet (or if Shizuku came back). */
     fun mostrar() {
         visible = true
+        cargarLeidas()
         if (!cargada || EstadoShizuku.ahora() != EstadoShizuku.E.LISTO) recargar()
+    }
+
+    /** The history's wifi codes (no Shizuku needed), crossed with the phone's networks if they were read. */
+    private fun cargarLeidas() {
+        act.fondo({ Leidas.agrupar(es.kalvo.escanerqr.Db.de(act).wifis()) }) { r ->
+            leidas = Leidas.cruzar(r.getOrElse { emptyList() }, redes)
+            pintarCuentas()
+            if (modo == 1) { pintarEstado(); aplicarFiltro() }
+        }
+    }
+
+    private fun pintarCuentas() {
+        btnMovil.text = if (cargada) "En el móvil (${redes.count { !it.sugerencia }})" else "En el móvil"
+        btnLeidas.text = "Leídas (${leidas.size})"
     }
 
     fun ocultar() { visible = false }
@@ -214,6 +259,8 @@ class PanelWifis(private val act: Activity) {
             }
             redes = c.redes
             cargada = true
+            leidas = Leidas.cruzar(leidas, redes)
+            pintarCuentas()
             pintarEstado()
             c.avisos.forEach { avisos.addView(tarjetaAviso(it, null, null)) }
             aplicarFiltro()
@@ -222,6 +269,14 @@ class PanelWifis(private val act: Activity) {
 
     private fun pintarEstado() {
         avisos.removeAllViews()
+        if (modo == 1) {
+            // «Leídas»: only the history, no Shizuku needed. «Añadir» needs Shizuku; «QR a mano» and the search do not.
+            botones.getChildAt(1).visibility = View.GONE
+            for (i in 2 until botones.childCount) botones.getChildAt(i).visibility = View.VISIBLE
+            filtros.visibility = View.GONE
+            resumen.text = "${leidas.size} wifis leídas o importadas"
+            return
+        }
         val e = EstadoShizuku.ahora()
         val listo = e == EstadoShizuku.E.LISTO
         for (i in 1 until botones.childCount) botones.getChildAt(i).visibility = if (listo) View.VISIBLE else View.GONE
@@ -236,10 +291,17 @@ class PanelWifis(private val act: Activity) {
             // «De otras apps» only when there is some (on a phone without them it would always be empty).
             chipOtras.visibility = if (otras > 0) View.VISIBLE else View.GONE
             if (otras == 0 && filtro == 2) origenGrupo.check(200)
+            // v2.8: other apps' suggestions vanish when that app is uninstalled; offer to pass them all at once.
+            val sinPasar = redes.filter { it.sugerencia }.map { it.ssid }.toSet() - redes.filter { !it.sugerencia }.map { it.ssid }.toSet()
+            if (cargada && sinPasar.isNotEmpty()) avisos.addView(tarjetaAviso(
+                "${sinPasar.size} redes las guardó otra app (QR Bot…). Si desinstalas esa app, el móvil las olvida.",
+                "Pasarlas a redes normales",
+            ) { pasarTodas() })
             return
         }
         resumen.text = "Sin Shizuku no puedo ver tus wifis."
         redes = emptyList(); cargada = false; adaptador.items = emptyList(); vacio.visibility = View.GONE
+        pintarCuentas()
         val par: Pair<String, () -> Unit> = when (e) {
             EstadoShizuku.E.SIN_PERMISO -> "Dar permiso" to { EstadoShizuku.pedirPermiso { act.runOnUiThread { recargar() } } }
             else -> "Abrir Shizuku" to {
@@ -307,6 +369,14 @@ class PanelWifis(private val act: Activity) {
 
     private fun aplicarFiltro() {
         val q = buscar.text?.toString().orEmpty().trim()
+        if (modo == 1) {
+            val vista = Leidas.filtrar(leidas, q)
+            adaptadorL.items = vista
+            vacio.visibility = if (vista.isEmpty()) View.VISIBLE else View.GONE
+            vacio.text = if (q.isNotEmpty()) "Ninguna wifi leída se llama así."
+                else "Aún no has leído ni importado ningún QR de wifi."
+            return
+        }
         val f = FiltroRedes(filtro, conUbicacion, escaneadas, rango, q)
         val vista = OrdenRedes.aplicar(redes, f, orden, System.currentTimeMillis())
         adaptador.items = vista
@@ -349,5 +419,88 @@ class PanelWifis(private val act: Activity) {
             fila.addView(ua.botonIcono(es.kalvo.escanerqr.R.drawable.ic_qr, "Ver el QR de ${r.ssid}", ua.cText) { Ficha.verQr(act, r) })
         }
         return fila
+    }
+
+    /** One wifi read from a code: name, type, how many times and when, where from; badge if the phone has it. */
+    private fun filaLeida(w: WifiLeida): View {
+        val fila = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(ui.px(2), ui.px(10), 0, ui.px(10))
+            minimumHeight = ui.px(68)
+            val fondo = android.util.TypedValue()
+            act.theme.resolveAttribute(android.R.attr.selectableItemBackground, fondo, true)
+            setBackgroundResource(fondo.resourceId)
+            isClickable = true; isFocusable = true
+            // Opens the newest read: the result screen has the password, «Conectar», «Guardar» and the QR.
+            setOnClickListener {
+                val l = try { es.kalvo.escanerqr.Db.de(act).una(w.ids.first()) } catch (_: Throwable) { null }
+                if (l == null) Toast.makeText(act, "Esa lectura ya no está en el historial", Toast.LENGTH_SHORT).show()
+                else es.kalvo.escanerqr.Procesar.abrirResultado(act, l)
+            }
+        }
+        fila.addView(ua.cuadro(es.kalvo.escanerqr.R.drawable.ic_wifi, es.kalvo.escanerqr.nucleo.Clase.WIFI, 44))
+        val textos = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.px(16), 0, ui.px(8), 0) }
+        textos.addView(ua.texto(w.ssid, 18f).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        val detalle = buildList {
+            add(when (w.tipo) { "nopass" -> "Abierta"; "SAE" -> "WPA3"; "WEP" -> "WEP"; else -> "WPA/WPA2" })
+            add(if (w.veces == 1) "leída el " + Cuando.fechaCorta(w.ultima)
+                else "${w.veces} veces, última el " + Cuando.fechaCorta(w.ultima))
+            w.origenes.firstOrNull { it.isNotEmpty() }?.let { add("de $it") }
+        }.joinToString(" · ")
+        textos.addView(ua.texto(detalle, 13f, ua.cMuted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, ui.px(3), 0, 0) })
+        fila.addView(textos, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+        when (w.enMovil) {
+            WifiLeida.EnMovil.IGUAL -> fila.addView(ua.pastilla("En el móvil",
+                ua.c(es.kalvo.escanerqr.R.color.wifi_fondo), ua.c(es.kalvo.escanerqr.R.color.wifi)))
+            WifiLeida.EnMovil.OTRA_CLAVE -> fila.addView(ua.pastilla("Otra contraseña",
+                ua.c(es.kalvo.escanerqr.R.color.equipo_fondo), ua.c(es.kalvo.escanerqr.R.color.equipo)))
+            WifiLeida.EnMovil.SIN_SABER -> fila.addView(ua.pastilla("Guardada",
+                ua.c(es.kalvo.escanerqr.R.color.gris_fondo), ua.c(es.kalvo.escanerqr.R.color.gris)))
+            WifiLeida.EnMovil.NO -> {}
+        }
+        val d = DesdeEscaner.datos(w.ssid, w.clave, w.tipo, w.oculta)
+        if (DesdeEscaner.problema(d) == null) {
+            fila.addView(ua.botonIcono(es.kalvo.escanerqr.R.drawable.ic_qr, "Ver el QR de ${w.ssid}", ua.cText) { Dialogos.abrirQr(act, d) })
+        }
+        return fila
+    }
+
+    /** Passes every other-app suggestion to a normal network, with the password from the history (see [PasarOtras]). */
+    private fun pasarTodas() {
+        val plan = es.kalvo.escanerqr.wifis.nucleo.PasarOtras.plan(redes, leidas)
+        val msg = buildString {
+            append("Se guardan ${plan.listas.size} como redes normales del móvil, con la contraseña de tu historial.")
+            if (plan.sinClave.isNotEmpty()) append("\n\n${plan.sinClave.size} no tienen contraseña en el historial y se quedan como están " +
+                "(se pueden pasar a mano desde su ficha).")
+            append("\n\nNo se borra nada: las de la otra app siguen hasta que la desinstales.")
+        }
+        val dlg = com.google.android.material.dialog.MaterialAlertDialogBuilder(act).setTitle("Pasar a redes normales").setMessage(msg)
+            .setNegativeButton("Cancelar", null)
+        if (plan.listas.isEmpty()) { dlg.setNegativeButton("Vale", null).show(); return }
+        dlg.setPositiveButton("Pasar ${plan.listas.size}") { _, _ ->
+            val barra = LinearProgressIndicator(act).apply { max = plan.listas.size; isIndeterminate = false }
+            val texto = ua.texto("0 de ${plan.listas.size}", 15f)
+            val caja = LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(ui.px(24), ui.px(16), ui.px(24), ui.px(8))
+                addView(texto); addView(barra, MATCH_PARENT, WRAP_CONTENT)
+            }
+            val progreso = com.google.android.material.dialog.MaterialAlertDialogBuilder(act).setTitle("Pasando redes…")
+                .setView(caja).setCancelable(false).show()
+            act.fondo({
+                Redes.guardarVarias(plan.listas) { hechas, total -> act.runOnUiThread { barra.progress = hechas; texto.text = "$hechas de $total" } }
+            }) { r ->
+                progreso.dismiss()
+                val fallos = r.getOrElse { e -> listOf("todas" to e.javaClass.simpleName) }
+                val bien = plan.listas.size - fallos.size
+                com.google.android.material.dialog.MaterialAlertDialogBuilder(act).setTitle("Hecho")
+                    .setMessage(buildString {
+                        append("$bien pasadas a redes normales.")
+                        if (fallos.isNotEmpty()) append("\n\nNo se pudieron ${fallos.size}:\n" +
+                            fallos.take(15).joinToString("\n") { "• ${it.first}: ${it.second}" } + if (fallos.size > 15) "\n…" else "")
+                    })
+                    .setPositiveButton("Vale", null).show()
+                recargar()
+            }
+        }.show()
     }
 }

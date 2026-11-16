@@ -45,7 +45,7 @@ class PanelHistorial(private val act: MainActivity) {
     private var todas: List<Lectura> = emptyList()
     private var busca = ""
     private var soloFavoritos = false
-    /** 0 all, 1 only scanned here, 2 only imported (S-J5). */
+    /** 0 all, 1 only scanned here, 2 only imported (S-J5), 3 only made in «Crear» (S-J9). */
     private var filtroOrigen = 0
     private var chipsOrigen: com.google.android.material.chip.ChipGroup? = null
     private val adaptador = Adaptador()
@@ -92,14 +92,14 @@ class PanelHistorial(private val act: MainActivity) {
             setOnCheckedChangeListener { _, c -> soloFavoritos = c; filtrar() }
         }
         chipFavoritos = chip
-        // «Escaneadas» / «Importadas» (S-J5): only shown when something was imported.
+        // «Escaneadas» / «Importadas» (S-J5) / «Creados» (S-J9): only shown when something was imported or made here.
         val grupo = com.google.android.material.chip.ChipGroup(act)
         grupo.addView(chip)
-        listOf("Escaneadas", "Importadas").forEachIndexed { i, t ->
+        listOf("Escaneadas", "Importadas", "Creados").forEachIndexed { i, t ->
             grupo.addView(Chip(act, null, com.google.android.material.R.attr.chipStyle).apply {
                 id = 400 + i; text = t; isCheckable = true
                 setOnCheckedChangeListener { _, c ->
-                    if (c) { filtroOrigen = i + 1; grupo.findViewById<Chip>(400 + (1 - i))?.isChecked = false }
+                    if (c) { filtroOrigen = i + 1; for (j in 0 until 3) if (j != i) grupo.findViewById<Chip>(400 + j)?.isChecked = false }
                     else if (filtroOrigen == i + 1) filtroOrigen = 0
                     filtrar()
                 }
@@ -198,10 +198,15 @@ class PanelHistorial(private val act: MainActivity) {
         val hoy = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
         val ayer = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(System.currentTimeMillis() - 86_400_000))
         val hayImportadas = todas.any { it.importada }
-        chipsOrigen?.let { g -> for (i in 1 until g.childCount) g.getChildAt(i).visibility = if (hayImportadas) View.VISIBLE else View.GONE }
+        val hayCreadas = todas.any { it.creada }
+        chipsOrigen?.let { g ->
+            g.findViewById<Chip>(400)?.visibility = if (hayImportadas || hayCreadas) View.VISIBLE else View.GONE
+            g.findViewById<Chip>(401)?.visibility = if (hayImportadas) View.VISIBLE else View.GONE
+            g.findViewById<Chip>(402)?.visibility = if (hayCreadas) View.VISIBLE else View.GONE
+        }
         val vistas = todas.filter {
             (!soloFavoritos || it.favorito) && Historial.coincide(it, busca) &&
-                when (filtroOrigen) { 1 -> !it.importada; 2 -> it.importada; else -> true }
+                when (filtroOrigen) { 1 -> it.origen.isEmpty(); 2 -> it.importada; 3 -> it.creada; else -> true }
         }
         val nf = java.text.NumberFormat.getIntegerInstance(Locale.forLanguageTag("es-ES"))
         val n = nf.format(todas.size)
@@ -431,7 +436,7 @@ class PanelHistorial(private val act: MainActivity) {
             v.texto.text = r.principal
             v.texto.typeface = if (r.mono) android.graphics.Typeface.MONOSPACE else android.graphics.Typeface.DEFAULT
             v.texto.textSize = if (r.mono) 17f else 18f
-            v.detalle.text = Resumenes.lineaDebajo(r, l.hora.take(5), l.notas, if (l.importada) l.textoOrigen else "")
+            v.detalle.text = Resumenes.lineaDebajo(r, l.hora.take(5), l.notas, if (l.importada || l.creada) l.textoOrigen else "")
             v.estrella.visibility = if (l.favorito) View.VISIBLE else View.GONE
             v.setOnClickListener { Procesar.abrirResultado(act, l) }
             v.setOnLongClickListener { menuLectura(v, l); true }

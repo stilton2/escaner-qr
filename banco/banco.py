@@ -2,18 +2,27 @@
 # app/src/main/java/es/kalvo/escanerqr/nucleo/Camara.kt (Plan.camara / Plan.imagen). Si cambias el plan allí, cámbialo aquí.
 # Uso:  python3 -m venv v && v/bin/pip install zxing-cpp==3.1.1 pillow numpy
 #       git clone --depth 1 --branch v3.1.1 https://github.com/zxing-cpp/zxing-cpp zxc      (muestras, Apache 2.0; NO al repo)
-#       v/bin/python -I banco.py zxc/test/samples orig,espejo,mitad,invertido [img24,img,cam24,cam] > salida.txt
+#       v/bin/python -I banco.py zxc/test/samples orig,espejo,mitad,invertido [img24,img,cam24,cam] [-v] > salida.txt
 #       v/bin/python -I resumen.py salida_antes.txt salida_ahora.txt      (tablas por formato)
 # Solo imprime cuentas. img24/cam24 = v2.4; img/cam = ahora.
+# S-J8: img/cam como la app 2.8: segunda lectura sin returnErrors si salieron errores, contenido binario (texto vacío) cuenta,
+# como en Lector.convertir (Binario). Con -v imprime fichero y pasada de cada «mal».
 # Laptop bench (same zxing-cpp core 3.1.1 as the app, via PyPI). Prints only counts.
 import sys, os, re, time, zxingcpp, numpy as np
 from PIL import Image, ImageOps
+VERBOSO = '-v' in sys.argv; sys.argv = [x for x in sys.argv if x != '-v']; ULTIMA = ['']
 root = sys.argv[1]; variantes = sys.argv[2].split(',')
 B = zxingcpp.Binarizer
 ESC = re.compile(r'<(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|DEL|U\+[0-9A-F]+)>')
-def limpio(s): return ''.join(c for c in ESC.sub('', s) if ord(c) >= 32 and ord(c) != 127 and c not in '()�' and not c.isspace())
-def read(a, maxs=255, **kw):
-    try: return [r for r in zxingcpp.read_barcodes(a, **kw) if r.valid][:maxs]
+def limpio(s): return ''.join(c for c in ESC.sub('', s) if ord(c) >= 32 and ord(c) != 127 and not 128 <= ord(c) < 160 and c not in '()�' and not c.isspace())
+def read(a, maxs=255, errores=False, nuevo=False, **kw):
+    # nuevo = as the app now (Lector.pasada + Lector.convertir, S-J8); errores = returnErrors as in the camera passes.
+    try:
+        r = zxingcpp.read_barcodes(a, return_errors=errores, **kw)
+        if errores and any(not x.valid for x in r): r = [x for x in r if not x.valid] + zxingcpp.read_barcodes(a, **kw)
+        r = [x for x in r if x.valid]
+        if nuevo: r = [x for x in r if x.text or len(x.bytes)]
+        return r[:maxs]
     except Exception: return []
 def reducir(a, f):
     h, w = a.shape[0]//f*f, a.shape[1]//f*f
@@ -25,14 +34,14 @@ def central(a, frac):
     h, w = a.shape; cw, ch = int(w*frac)//2*2, int(h*frac)//2*2
     x, y = (w-cw)//2//2*2, (h-ch)//2//2*2
     return a[y:y+ch, x:x+cw]
-def pasada(a, frac=1, esc=1, suave=False, hist=False, espejo=False, inv=False, maxs=255):
+def pasada(a, frac=1, esc=1, suave=False, hist=False, espejo=False, inv=False, maxs=255, errores=False):
     if frac < 1: a = central(a, frac)
     if a.shape[0] < 2 or a.shape[1] < 2: return []
     if esc > 1: a = ampliar(a, esc, suave)
     elif esc < -1: a = reducir(a, -esc)
     if espejo: a = np.ascontiguousarray(np.fliplr(a))
     if inv: a = 255 - a
-    r = read(np.ascontiguousarray(a), maxs, try_downscale=esc <= 1, binarizer=B.GlobalHistogram if hist else B.LocalAverage)
+    r = read(np.ascontiguousarray(a), maxs, errores, True, try_downscale=esc <= 1, binarizer=B.GlobalHistogram if hist else B.LocalAverage)
     extra = esc > 1 or hist or espejo or inv
     return [x for x in r if not (extra and 'ITF' in str(x.format) and len(x.text) < 10)]
 def plan_camara(w, h, n):
@@ -47,18 +56,19 @@ def plan_imagen(w, h):
     if lado > 1600: l += [dict(frac=0.5, esc=2), dict(frac=0.34, esc=3, suave=True)]
     return l
 def perfil(p, a):
+    ULTIMA[0] = 'normal' if p != 'img' else 'todas'
     if p == 'img24': return read(a)
     if p == 'cam24': return read(a, 1)
     if p == 'img':
-        r = read(a)
+        r = read(a, nuevo=True)
         if r and max(a.shape) > 1600: return r
         for q in plan_imagen(a.shape[1], a.shape[0]): r += pasada(a, **q)
         return r
     if p == 'cam':
         for n in range(4):
             for q in plan_camara(a.shape[1], a.shape[0], n):
-                r = pasada(a, maxs=8, **q)
-                if r: return r
+                r = pasada(a, maxs=8, errores=True, **q)
+                if r: ULTIMA[0] = f'fotograma {n} {q}'; return r
         return []
 def variante(im, v):
     if v == 'espejo': return ImageOps.mirror(im)
@@ -91,7 +101,9 @@ for c in sorted(os.listdir(root)):
                     A, Bt = limpio(x.text), limpio(esp[1])
                     return A == Bt or '0' + A == Bt or A == '0' + Bt or ('extension' in c and A and Bt.startswith(A))
                 if any(ok(x) for x in r): bien[p] += 1
-                elif r: mal[p] += 1
+                elif r:
+                    mal[p] += 1
+                    if VERBOSO: print(f'  MAL {c}/{f}@{v} {p} pasada={ULTIMA[0]} formatos={sorted(set(str(x.format) for x in r))}', flush=True)
         print(f'{c}@{v} n={n} ' + ' · '.join(f'{p} {bien[p]} mal {mal[p]}' for p in perfiles), flush=True)
         for p in perfiles:
             t = tot.setdefault((p, v), [0, 0, 0, 0.0])

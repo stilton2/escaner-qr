@@ -200,12 +200,12 @@ class ResultadoActivity : AppCompatActivity() {
         mas(c, e)
         // Raw text under the fields, for the structured types.
         if (e != null || (c !is Contenido.Enlace && c !is Contenido.Texto && c !is Contenido.Producto && c !is Contenido.Telefono)) {
-            cuerpo.addView(ui.titulo("Texto leído"))
+            cuerpo.addView(ui.titulo(if (l.creada) "Texto del código" else "Texto leído"))
             ui.tarjeta(cuerpo) { addView(ui.texto(if (esWifi) ocultarClave(l.texto, (c as Contenido.Wifi).clave) else l.texto, 13f, ui.cMuted).apply { setTextIsSelectable(!esWifi) }) }
         }
         if (l.id == 0L && !aj.guardar) cuerpo.addView(ui.texto("No se ha guardado en el historial (lo tienes apagado en Ajustes).", 13f, ui.cMuted))
         // Where it came from (S-J5): scanned here or imported from another app or file.
-        else cuerpo.addView(ui.texto((if (l.importada) "Importado de ${l.origen}" else "Escaneado con esta app") + " · ${fechaBonita(l)}", 13f, ui.cMuted)
+        else cuerpo.addView(ui.texto((if (l.creada) "Creado con esta app" else if (l.importada) "Importado de ${l.origen}" else "Escaneado con esta app") + " · ${fechaBonita(l)}", 13f, ui.cMuted)
             .apply { setPadding(0, ui.px(12), 0, 0) })
     }
 
@@ -364,6 +364,8 @@ class ResultadoActivity : AppCompatActivity() {
     /** «Más»: copy everything, share, see as QR, search (secondary buttons). */
     private fun mas(c: Contenido, e: Especial?) {
         cuerpo.addView(ui.titulo("Más"))
+        // S-J9: a code made in «Crear»: back to its picture (same format), to share or save it again.
+        if (l.creada) a("Ver el código creado", R.drawable.ic_qr) { CodigoActivity.abrir(this, l.texto, l.formato, guardar = false) }
         if (e != null) {
             val q = (e as? Especial.Equipo)?.modelo?.ifEmpty { null } ?: (e as? Especial.Articulo)?.modelo?.ifEmpty { null } ?: l.texto
             a("Buscar en la web", R.drawable.ic_buscar) { Acciones.buscar(this, q, aj.buscador) }
@@ -525,19 +527,29 @@ class ResultadoActivity : AppCompatActivity() {
         if (EstadoShizuku.ahora() != EstadoShizuku.E.LISTO) { pintar(); return }
         DesdeEscaner.problema(d)?.let { p -> noSePuede(p); return }
         ocupado(true)
-        fondo({ Redes.yaGuardada(d.ssid) }) { r ->
+        fondo({ Redes.yaGuardada(d.ssid, d.clave) }) { r ->
             ocupado(false)
             val ya = r.getOrElse { YaGuardada(false, emptyList()) }
             if (ya.nada) hacerWifi(d, conectar) else preguntarYaGuardada(d, ya, conectar)
         }
     }
 
-    /** We never know the old password: say it is already saved, never that it is different. */
+    /** Says whether it is already saved and, if the saved password could be read, whether it is the same or different. */
     private fun preguntarYaGuardada(d: DatosRed, ya: YaGuardada, conectar: Boolean) {
+        // Same password as the saved one: nothing to change. Connect straight away, or just say so.
+        if (ya.normal && ya.mismaClave == true && ya.sugeridaPor.isEmpty()) {
+            if (conectar) hacerWifi(d, true)
+            else Toast.makeText(this, "«${d.ssid}» ya está guardada con esta misma contraseña", Toast.LENGTH_LONG).show()
+            return
+        }
         val texto = StringBuilder()
         if (ya.normal) texto.append(
-            if (d.seguridad.llevaClave) "Esta wifi ya está guardada. ¿Pongo la contraseña nueva?"
-            else "Esta wifi ya está guardada. ¿La guardo otra vez con lo que dice este código?"
+            when {
+                !d.seguridad.llevaClave -> "Esta wifi ya está guardada. ¿La guardo otra vez con lo que dice este código?"
+                ya.mismaClave == false -> "Esta wifi ya está guardada en el móvil, pero con OTRA contraseña. ¿Pongo la de este código?"
+                ya.mismaClave == true -> "Esta wifi ya está guardada con esta misma contraseña."
+                else -> "Esta wifi ya está guardada. ¿Pongo la contraseña nueva?"
+            }
         )
         for (p in ya.sugeridaPor) {
             val app = Quien.app(this, p)

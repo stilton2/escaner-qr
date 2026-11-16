@@ -18,7 +18,7 @@ import es.kalvo.escanerqr.wifis.nucleo.Red
 object Ficha {
     fun puedeQr(r: Red) = r.seguridad.sencilla
 
-    /** Open networks go straight to the QR; the others ask for the password first (this app does not read it). */
+    /** Open networks, or ones whose password was read, go straight to the QR; otherwise it is asked for first. */
     fun verQr(act: Activity, r: Red) {
         if (!r.seguridad.llevaClave || r.clave != null) Dialogos.abrirQr(act, r.datos()) else Dialogos.soloQr(act, r.datos())
     }
@@ -61,7 +61,7 @@ object Ficha {
                 fila.addView(ojo)
                 fila.addView(ui.botonIcono(es.kalvo.escanerqr.R.drawable.ic_copiar, "Copiar contraseña") { Ui.copiar(act, "Contraseña wifi", clave) })
                 addView(fila)
-            } else nota("Esta app no lee las contraseñas guardadas. Para el QR o para cambiarla, la escribes tú. " +
+            } else nota((if (r.sugerencia) "Es de otra app: Android no deja ver su contraseña. " else "No pude leer su contraseña (¿Shizuku listo?). ") + "Para el QR o para cambiarla, la escribes tú. " +
                 "(Samsung la enseña en Ajustes → Wi-Fi → ⋮ → Administrar redes.)")
         } else nota("Sin contraseña (red abierta)")
 

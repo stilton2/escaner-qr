@@ -269,7 +269,8 @@ sealed class Contenido {
                 nombre = listOfNotNull(n.getOrNull(3), n.getOrNull(1), n.getOrNull(2), n.getOrNull(0), n.getOrNull(4))
                     .map { desescaparVcard(it).trim() }.filter { it.isNotEmpty() }.joinToString(" ")
             }
-            val adr = ls.firstOrNull { it.first == "ADR" }?.second?.split(';')?.map { desescaparVcard(it).trim() }?.filter { it.isNotEmpty() }
+            // S-J9: an escaped "\;" inside a part (as «Crear» writes it) does not split the address.
+            val adr = ls.firstOrNull { it.first == "ADR" }?.second?.let { partirEscapado(it, ';') }?.map { desescaparVcard(it).trim() }?.filter { it.isNotEmpty() }
                 ?.joinToString(", ") ?: ""
             return Contacto(
                 nombre = nombre,

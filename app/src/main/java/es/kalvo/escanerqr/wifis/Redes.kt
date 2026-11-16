@@ -35,14 +35,23 @@ object Redes {
         val detalles = if (okVolcado) try { Detalles.leer(volcado!!.salida) } catch (e: Throwable) {
             SemWifi.registrar("detalles", e); emptyMap()
         } else emptyMap()
-        // Names and types of the normal networks (no passwords: this app does not read them).
+        // Names and types of the normal networks.
         val l = Shell.run(Ordenes.listar())
         val listadas = if (l == null || l.codigo != 0) {
             avisos += "No pude leer la lista de redes guardadas («cmd wifi list-networks»)."
             emptyList()
         } else ListaRedes.leer(l.salida)
+        // Passwords of the normal networks (only in memory, for the card). Optional: without them the list still works.
+        val claves = try { Wifi.clavesGuardadas() } catch (e: Throwable) {
+            SemWifi.registrar("claves", e)
+            avisos += "No pude leer las contraseñas guardadas (${SemWifi.motivo(e)})."
+            emptyMap()
+        }
         var redes = Combinar.sinClaves(listadas, sugerencias, creadores).map { r ->
-            if (r.sugerencia) r else detalles[r.id]?.let { r.copy(detalle = it) } ?: r
+            if (r.sugerencia) r else {
+                val conDetalle = detalles[r.id]?.let { r.copy(detalle = it) } ?: r
+                claves[r.id]?.let { conDetalle.copy(clave = it) } ?: conDetalle
+            }
         }
         // Samsung's dates (saved, last connected) and use, and where each network is used. Optional; on other makes these
         // services do not exist, so they are not asked for and no warning is shown (S-J5: the app is for any phone).
@@ -69,12 +78,15 @@ object Redes {
      * What the phone already has with this name (normal network and/or other apps' suggestions), read-only.
      * If Android does not answer, it says "nothing" (saving with the same name and type then just updates it).
      */
-    fun yaGuardada(ssid: String): YaGuardada {
+    fun yaGuardada(ssid: String, clave: String? = null): YaGuardada {
         val l = Shell.run(Ordenes.listar())
         val normales = if (l != null && l.codigo == 0) ListaRedes.leer(l.salida) else emptyList()
         val v = Shell.run(Ordenes.volcado())
         val sug = if (v != null && v.codigo == 0) Sugerencias.leer(v.salida) else emptyList()
-        return YaGuardada.buscar(ssid, normales, sug)
+        val claves = if (clave != null && normales.any { it.ssid == ssid }) {
+            try { Wifi.clavesGuardadas() } catch (e: Throwable) { SemWifi.registrar("claves", e); emptyMap() }
+        } else emptyMap()
+        return YaGuardada.buscar(ssid, normales, sug, claves, clave)
     }
 
     /** Saves a normal network: through the wifi service; if that call is not available, with `cmd wifi add-network`. */

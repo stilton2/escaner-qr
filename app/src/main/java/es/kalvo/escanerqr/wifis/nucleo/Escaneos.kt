@@ -6,7 +6,8 @@ import es.kalvo.escanerqr.nucleo.Contenido
 data class Escaneo(val id: Long, val instante: Long)
 
 /** A history row, only what is needed to cross it with the networks (the text is never kept after this). */
-data class FilaHistorial(val id: Long, val instante: Long, val texto: String)
+/** [origen]: "" = scanned with this app; otherwise the app or file it was imported from. */
+data class FilaHistorial(val id: Long, val instante: Long, val texto: String, val origen: String = "")
 
 object Escaneos {
     /** Network name → its reads, newest first. Only `WIFI:` codes with a name count. */

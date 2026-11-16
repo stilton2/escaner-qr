@@ -14,7 +14,7 @@ import java.lang.reflect.Method
 
 /**
  * Saves a normal network through Android's wifi service as the shell user (Shizuku's binder), the same call Ajustes uses.
- * This app does NOT read saved passwords (path B, see informes/S-I2.md): it only writes the network the user typed.
+ * It also reads the phone's saved passwords for the owner to see ([clavesGuardadas]), only into memory.
  * Nothing here is written to disk or to the log.
  */
 object Wifi {
@@ -92,6 +92,45 @@ object Wifi {
             }
         }
         m.invoke(wm, *args.toTypedArray())
+    }
+
+    /**
+     * The passwords of the phone's own saved networks, by networkId, for the owner to see them in the card
+     * (the same thing Ajustes → Wi-Fi → network → «Compartir» shows). Uses IWifiManager.getPrivilegedConfiguredNetworks,
+     * allowed to the shell user (READ_WIFI_CREDENTIAL). Kept only in memory while the tab is open; never written to disk
+     * or to the log. Networks without a password are left out. Throws if Android does not answer.
+     */
+    @Suppress("DEPRECATION")
+    fun clavesGuardadas(): Map<Int, String> {
+        val wm = servicio()
+        val m = interfaz().methods.filter { it.name == "getPrivilegedConfiguredNetworks" }.maxByOrNull { it.parameterCount }
+            ?: throw NoSuchMethodException("getPrivilegedConfiguredNetworks")
+        val args = m.parameterTypes.mapIndexed { i, t ->
+            when {
+                t == String::class.java -> if (i == 0) paquete() else null
+                // Android 13+ answers with empty passwords unless the caller says who it is (AttributionSource).
+                t == android.os.Bundle::class.java -> android.os.Bundle().apply {
+                    if (Build.VERSION.SDK_INT >= 31) putParcelable("EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE",
+                        android.content.AttributionSource.Builder(Shizuku.getUid()).setPackageName(paquete()).build())
+                }
+                else -> throw IllegalStateException("parámetro ${t.simpleName} desconocido")
+            }
+        }
+        val res = try { m.invoke(wm, *args.toTypedArray()) } catch (e: java.lang.reflect.InvocationTargetException) { throw e.cause ?: e }
+            ?: return emptyMap()
+        val lista = res.javaClass.getMethod("getList").invoke(res) as List<*>
+        val out = HashMap<Int, String>()
+        for (o in lista) {
+            val c = o as? WifiConfiguration ?: continue
+            val clave = Claves.claveLegible(c.preSharedKey)
+                ?: c.wepKeys?.getOrNull(c.wepTxKeyIndex)?.let { Claves.claveLegible(it) }
+                ?: continue
+            out[c.networkId] = clave
+        }
+        // Only counts, never names or passwords.
+        android.util.Log.i(SemWifi.TAG, "claves: redes=${lista.size} con clave=${out.size} " +
+            "ocultas=${lista.count { (it as? WifiConfiguration)?.preSharedKey == "*" }}")
+        return out
     }
 
     /** A listener that ignores the answer (we check the real state afterwards). */

@@ -25,10 +25,17 @@ data class Lectura(
     /** Where it came from (S-J5): "" = scanned with this app; otherwise the app or file it was imported from ("QR Bot"…). */
     val origen: String = "",
 ) {
-    val importada: Boolean get() = origen.isNotEmpty()
+    /** Made in the «Crear» tab (S-J9): [origen] = [Historial.CREADO]. Neither scanned nor imported. */
+    val creada: Boolean get() = origen == Historial.CREADO
 
-    /** «escaneado» or «importado de QR Bot», for the history and the result. */
-    val textoOrigen: String get() = if (origen.isEmpty()) "escaneado" else "importado de $origen"
+    val importada: Boolean get() = origen.isNotEmpty() && !creada
+
+    /** «escaneado», «creado» or «importado de QR Bot», for the history and the result. */
+    val textoOrigen: String get() = when {
+        origen.isEmpty() -> "escaneado"
+        creada -> "creado"
+        else -> "importado de $origen"
+    }
 
     /** For files without dates (S-J5): same origin + format + text = "ya estaba" (the time is the import time, never equal). */
     val claveSinHora: String get() = "$origen\u0000$formato\u0000$texto"
@@ -40,6 +47,9 @@ data class Lectura(
 }
 
 object Historial {
+    /** [Lectura.origen] of a code made in the «Crear» tab (S-J9). */
+    const val CREADO = "Creado"
+
     val CABECERA = listOf("date", "time", "time_zone", "format", "text", "notes", "favorite", "date_utc", "time_utc", "metadata")
 
     /** Line end of our export. QR Bot's own could be CRLF; the reader takes both. */

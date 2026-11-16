@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.SystemClock
 import androidx.camera.core.ImageProxy
+import es.kalvo.escanerqr.nucleo.Binario
 import es.kalvo.escanerqr.nucleo.Cuadro
 import es.kalvo.escanerqr.nucleo.Fiable
 import es.kalvo.escanerqr.nucleo.Formatos
@@ -48,11 +49,22 @@ object Lector {
         returnErrors = errores
     }
 
+    /**
+     * A result → what the app shows, or null if it is not trusted. S-J8: content that is not text (binary, mixed ECI) is shown
+     * as hexadecimal ([Binario]) instead of being dropped.
+     */
     fun convertir(r: BarcodeReader.Result): Leido? {
-        val t = r.text ?: return null
-        if (t.isEmpty() || r.error != null) return null
+        if (r.error != null) return null
+        val t = r.text?.takeIf { it.isNotEmpty() } ?: Binario.texto(r.bytes) ?: return null
         val f = r.format.name
         return Leido(t, Formatos.nombre(f), if (f.contains("QR")) Formatos.metadata(r.ecLevel) else "")
+    }
+
+    /** The four corners of a result (top-left, top-right, bottom-right, bottom-left) in the pixels of the picture read. */
+    fun esquinas(x: BarcodeReader.Result): FloatArray {
+        val q = x.position
+        return floatArrayOf(q.topLeft.x.toFloat(), q.topLeft.y.toFloat(), q.topRight.x.toFloat(), q.topRight.y.toFloat(),
+            q.bottomRight.x.toFloat(), q.bottomRight.y.toFloat(), q.bottomLeft.x.toFloat(), q.bottomLeft.y.toFloat())
     }
 
     // ---------- pictures ----------
@@ -102,14 +114,20 @@ object Lector {
         val r = p.recorte(lum.ancho, lum.alto)
         val img = preparar(lum, p)
         val bmp = aBitmap(img, reusar)
+        val zona = Rect(0, 0, img.ancho, img.alto)
         lector.options = opciones(p, maximo, errores)
-        val res = lector.read(bmp, Rect(0, 0, img.ancho, img.alto), 0)
+        var res = lector.read(bmp, zona, 0)
+        // S-J8: with returnErrors, zxing-cpp keeps a linear code that failed its check on the first lines as an error and drops
+        // the good read of the next lines, so a wrong neighbour read could win. When errors came back, read again without them
+        // and take the valid codes from that second read (the errors only say where unreadable codes are, for the zoom).
+        if (errores && res.any { it.error != null }) {
+            lector.options = opciones(p, maximo, false)
+            res = res.filter { it.error != null } + lector.read(bmp, zona, 0)
+        }
         if (bmp !== reusar) bmp.recycle()
         val extra = Fiable.esExtra(p)
         return res.filter { x -> x.error != null || Fiable.aceptar(Formatos.nombre(x.format.name), x.text ?: "", extra) }.map { x ->
-            val q = x.position
-            val pts = floatArrayOf(q.topLeft.x.toFloat(), q.topLeft.y.toFloat(), q.topRight.x.toFloat(), q.topRight.y.toFloat(),
-                q.bottomRight.x.toFloat(), q.bottomRight.y.toFloat(), q.bottomLeft.x.toFloat(), q.bottomLeft.y.toFloat())
+            val pts = esquinas(x)
             for (i in 0 until 4) {
                 val (mx, my) = p.aMarco(r, pts[2 * i], pts[2 * i + 1])
                 pts[2 * i] = mx; pts[2 * i + 1] = my
@@ -196,7 +214,7 @@ class LectorCamara {
                     norm[2 * i] = x; norm[2 * i + 1] = y
                 }
                 val l = Lector.convertir(r)
-                if (l != null) hallados += Hallado(l.texto, l.formato, l.metadata, Cuadro(norm)) else errados += Cuadro(norm)
+                if (l != null) hallados += Hallado(l.texto, l.formato, l.metadata, Cuadro(norm)) else if (r.error != null) errados += Cuadro(norm)
             }
             if (hallados.isNotEmpty()) { cual = p.nombre; break }
         }

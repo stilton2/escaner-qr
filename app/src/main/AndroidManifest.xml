@@ -57,6 +57,15 @@
             android:name=".ResultadoActivity"
             android:exported="false" />
 
+        <!-- «Crear» tab (S-J9): the form of one kind of code, and the code made (share, save to the gallery, copy). -->
+        <activity
+            android:name=".CrearActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".CodigoActivity"
+            android:exported="false" />
+
         <!-- Wifis part: the QR of a network, big and bright (data in memory, never in the intent). -->
         <activity
             android:name=".wifis.QrActivity"

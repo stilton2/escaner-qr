@@ -21,13 +21,20 @@ Con [Shizuku](https://shizuku.rikka.app/) añade una pestaña para gestionar las
 - **Exportar** el historial en CSV o JSON.
 - **Ajustes**: copiar al portapapeles al leer, copiar directamente la MAC, vibrar, pitido, abrir enlaces solos, lectura continua, repetidos, buscador, tema.
 
-### Pestaña Wifis (necesita Shizuku)
+### Pestaña Crear
+- Hacer códigos: texto, enlace, wifi, teléfono, SMS, correo, contacto, ubicación, evento, portapapeles y códigos de barras (EAN-13, EAN-8, UPC-A, Code 128, Code 39, ITF, Data Matrix, Aztec, PDF 417, con aviso si el dato no vale para ese formato).
+- Compartir la imagen, guardarla en la galería o copiar el texto. Lo creado queda en el Historial como «Creado».
+
+### Pestaña Wifis
+Dos listas: **En el móvil** (necesita Shizuku) y **Leídas** (todas las wifis escaneadas o importadas, con marca si ya están en el móvil o con otra contraseña; no necesita Shizuku).
 
 - Lista de las redes guardadas con buscador, ordenar (nombre, última conexión, guardada por primera vez, última vez escaneada) y filtros (con ubicación, escaneadas, por fechas, de otras apps).
 - Ficha de cada red: QR grande para compartir, conectar, cambiar contraseña, olvidar, quién la guardó, ajustes de la red y lecturas de esa red en tu historial.
 - En móviles **Samsung**: dónde se usa cada red (mapa), cuándo se guardó por primera vez y la última conexión.
 - Redes que otra app dejó como «sugerencia» (no se pueden editar en Ajustes): se señalan y se pueden volver a guardar como red normal.
-- Las contraseñas de las redes ya guardadas **no** se leen: se escriben a mano o llegan del QR leído.
+- Con Shizuku, la ficha enseña la **contraseña** de cada red guardada (oculta hasta pulsar el ojo; solo en memoria, nunca se guarda ni sale del móvil). Las de «sugerencias» de otras apps Android no las da.
+- **Pasar de golpe** las redes que otra app dejó como sugerencia (p. ej. QR Bot) a redes normales, con la contraseña de tu historial importado, para poder desinstalar esa app sin perderlas.
+- Al leer el QR de una wifi que ya tienes, avisa si la contraseña es la misma u otra.
 
 Sin Shizuku todo lo demás funciona igual.
 
@@ -69,5 +76,6 @@ Requiere Android 11 (API 30) o superior. La APK incluida es solo para arm64.
 **Escáner QR** is an Android QR/barcode scanner with **no ads, no trackers and no internet permission**, aimed at installers: it recognises device labels (JSON with model/MAC/serial, bare MACs, SIM ICCIDs, part numbers) and copies the useful bit automatically (MACs always as `AA:BB:CC:DD:EE:FF`).
 Wifi QR codes get a **Connect** button (saved as a normal network via [Shizuku](https://shizuku.rikka.app/), or through Android's "Save this network?" dialog without it).
 History by day with search, favourites and notes; **import** from QR Bot, Binary Eye and generic CSV/JSON/TXT (column mapping when unknown); export to CSV or JSON.
-With Shizuku, a **Wifis** tab lists saved networks with sort/filters, share-as-QR, connect, change password, forget, network settings and, on Samsung phones, location and first/last connection.
+A **Create** tab makes QR codes (text, link, wifi, phone, SMS, e-mail, contact, location, event) and barcodes (EAN, UPC, Code 128/39, ITF, Data Matrix, Aztec, PDF 417).
+With Shizuku, a **Wifis** tab lists saved networks (with their passwords, shown on demand, memory only) with sort/filters, share-as-QR, connect, change password, forget, bulk-convert other apps' suggestions into normal networks, network settings and, on Samsung phones, location and first/last connection. A second list shows every wifi code you scanned or imported.
 UI in Spanish. Android 11+. License: GPL-3.0.

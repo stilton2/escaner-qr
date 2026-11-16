@@ -79,7 +79,7 @@ object Dialogos {
         val dlg = MaterialAlertDialogBuilder(act)
             .setTitle(if (inicial == null) "Hacer un QR a mano" else "QR de «${inicial.ssid}»")
             .setMessage(if (inicial == null) "No se guarda nada: solo se enseña el QR."
-                else "Esta app no lee las contraseñas guardadas: escríbela tú. No se guarda nada, solo se enseña el QR.")
+                else "No sé su contraseña: escríbela tú. No se guarda nada, solo se enseña el QR.")
             .setView(envolver(f.vista))
             .setPositiveButton("Ver QR", null)
             .setNegativeButton("Cancelar", null)

@@ -31,6 +31,22 @@ object Procesar {
         return if (id > 0) l.copy(id = id) else (db.buscarIgual(l.formato, l.texto) ?: l)
     }
 
+    /**
+     * S-J9: a code made in «Crear» goes to the history with origin «Creado» (only if the history is on in Ajustes).
+     * Making the same code again (same text and format) moves that entry to now instead of adding another one.
+     */
+    fun guardarCreado(ctx: Context, texto: String, formato: String): Lectura? {
+        if (!Ajustes(ctx).guardar) return null
+        val l = Historial.nueva(System.currentTimeMillis(), TimeZone.getDefault(), formato, texto).copy(origen = Historial.CREADO)
+        val db = Db.de(ctx)
+        db.buscarIgual(formato, texto, Historial.CREADO)?.let { igual ->
+            db.moverAhora(igual.id, l)
+            return db.una(igual.id) ?: l
+        }
+        val id = db.insertar(l)
+        return if (id > 0) l.copy(id = id) else db.buscarIgual(formato, texto, Historial.CREADO)
+    }
+
     fun avisar(ctx: Context) {
         val aj = Ajustes(ctx)
         if (aj.vibrar) {

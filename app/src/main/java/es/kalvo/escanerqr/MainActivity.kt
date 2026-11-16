@@ -61,7 +61,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
- * Tabs: Escanear (camera), Historial and Ajustes like QR Bot, plus Wifis (what was the «Mis wifis» app until v2.0).
+ * Tabs: Escanear (camera), Historial, Crear (S-J9) and Ajustes like QR Bot, plus Wifis (what was the «Mis wifis» app until v2.0).
  * Since v2.2 (S-J4) the tab bar is at the top, «estilo A».
  */
 class MainActivity : AppCompatActivity() {
@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historial: PanelHistorial
     private lateinit var ajustesPanel: PanelAjustes
     private lateinit var wifis: PanelWifis
+    private lateinit var crear: PanelCrear
     private val aj by lazy { Ajustes(this) }
 
     // Camera
@@ -126,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         nav = Pestanas(ui) { mostrar(it) }
         nav.anadir(1, "Escanear", R.drawable.ic_escanear)
         nav.anadir(2, "Historial", R.drawable.ic_historial)
+        nav.anadir(5, "Crear", R.drawable.ic_crear)  // S-J9
         nav.anadir(4, "Wifis", R.drawable.ic_wifi)
         nav.anadir(3, "Ajustes", R.drawable.ic_ajustes)
         raiz.addView(nav.vista, MATCH_PARENT, WRAP_CONTENT)
@@ -137,10 +139,12 @@ class MainActivity : AppCompatActivity() {
         historial = PanelHistorial(this)
         ajustesPanel = PanelAjustes(this)
         wifis = PanelWifis(this)
+        crear = PanelCrear(this)
         contenedor.addView(vistaEscaner, MATCH_PARENT, MATCH_PARENT)
         contenedor.addView(historial.vista, MATCH_PARENT, MATCH_PARENT)
         contenedor.addView(ajustesPanel.vista, MATCH_PARENT, MATCH_PARENT)
         contenedor.addView(wifis.vista, MATCH_PARENT, MATCH_PARENT)
+        contenedor.addView(crear.vista, MATCH_PARENT, MATCH_PARENT)
         // Edge to edge: the tab bar goes under the status bar; the content stops above the gesture bar.
         ViewCompat.setOnApplyWindowInsetsListener(raiz) { _, ins ->
             val b = ins.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
@@ -175,6 +179,7 @@ class MainActivity : AppCompatActivity() {
         historial.vista.visibility = if (id == 2) View.VISIBLE else View.GONE
         ajustesPanel.vista.visibility = if (id == 3) View.VISIBLE else View.GONE
         wifis.vista.visibility = if (id == 4) View.VISIBLE else View.GONE
+        crear.vista.visibility = if (id == 5) View.VISIBLE else View.GONE
         if (id == 1) { visor.mira = aj.soloMira; arrancarCamara() } else pararCamara()
         if (id == 2) historial.refrescar()
         if (id == 3) ajustesPanel.refrescar()

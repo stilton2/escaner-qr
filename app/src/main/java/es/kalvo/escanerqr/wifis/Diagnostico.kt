@@ -24,7 +24,8 @@ class Diagnostico : Instrumentation() {
                 val cuenta = Db.de(targetContext).cuentaPorOrigen()
                 out.putInt("historial_total", cuenta.values.sum())
                 out.putInt("historial_escaneadas", cuenta[""] ?: 0)
-                out.putInt("historial_importadas", cuenta.filterKeys { it.isNotEmpty() }.values.sum())
+                out.putInt("historial_importadas", cuenta.filterKeys { it.isNotEmpty() && it != es.kalvo.escanerqr.nucleo.Historial.CREADO }.values.sum())
+                out.putInt("historial_creadas", cuenta[es.kalvo.escanerqr.nucleo.Historial.CREADO] ?: 0)
                 out.putInt("historial_importadas_qr_bot", cuenta["QR Bot"] ?: 0)
             } catch (e: Throwable) { out.putString("historial_fallo", e.javaClass.simpleName) }
             // Shizuku's binder arrives a moment after the app starts.

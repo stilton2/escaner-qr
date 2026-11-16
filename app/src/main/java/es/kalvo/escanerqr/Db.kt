@@ -92,17 +92,26 @@ class Db private constructor(private val ctx: Context) : SQLiteOpenHelper(ctx, "
         readableDatabase.rawQuery("SELECT $COLS FROM lecturas WHERE formato = ? AND texto = ? ORDER BY instante DESC LIMIT 1", arrayOf(formato, texto))
             .use { if (it.moveToFirst()) leer(it) else null }
 
+    /** The newest read with that text, format and origin (S-J9: the same code made again in «Crear»). */
+    fun buscarIgual(formato: String, texto: String, origen: String): Lectura? =
+        readableDatabase.rawQuery("SELECT $COLS FROM lecturas WHERE formato = ? AND texto = ? AND origen = ? ORDER BY instante DESC LIMIT 1",
+            arrayOf(formato, texto, origen)).use { if (it.moveToFirst()) leer(it) else null }
+
     /** Moves a repeated scan to now (keeps its notes and star). */
     fun moverAhora(id: Long, ahora: Lectura) {
         val v = valores(ahora).apply { remove("notas"); remove("favorito"); remove("texto"); remove("formato") }
         writableDatabase.updateWithOnConflict("lecturas", v, "id = ?", arrayOf(id.toString()), SQLiteDatabase.CONFLICT_IGNORE)
     }
 
-    /** Only the wifi codes (`WIFI:…`, any case), for the Wifis tab to say when each network was scanned. Read-only. */
+    /**
+     * Only the wifi codes (`WIFI:…`, any case), for the Wifis tab to say when each network was scanned. Read-only.
+     * Codes made in «Crear» (S-J9) are left out: they were not read anywhere.
+     */
     fun wifis(): List<es.kalvo.escanerqr.wifis.nucleo.FilaHistorial> =
-        readableDatabase.rawQuery("SELECT id, instante, texto FROM lecturas WHERE texto LIKE '%WIFI:%'", null).use { c ->
+        readableDatabase.rawQuery("SELECT id, instante, texto, origen FROM lecturas WHERE texto LIKE '%WIFI:%' AND origen <> ?",
+            arrayOf(es.kalvo.escanerqr.nucleo.Historial.CREADO)).use { c ->
             val out = ArrayList<es.kalvo.escanerqr.wifis.nucleo.FilaHistorial>(c.count)
-            while (c.moveToNext()) out.add(es.kalvo.escanerqr.wifis.nucleo.FilaHistorial(c.getLong(0), c.getLong(1), c.getString(2)))
+            while (c.moveToNext()) out.add(es.kalvo.escanerqr.wifis.nucleo.FilaHistorial(c.getLong(0), c.getLong(1), c.getString(2), c.getString(3).orEmpty()))
             out
         }
 
