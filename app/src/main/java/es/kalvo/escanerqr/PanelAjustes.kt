@@ -50,6 +50,20 @@ class PanelAjustes(private val act: MainActivity) {
         ui.tarjeta(col) {
             interruptor(this, "Usar la cámara de delante", null, aj.frontal) { aj.frontal = it }
             interruptor(this, "Encender la linterna al abrir", null, aj.linternaAlAbrir) { aj.linternaAlAbrir = it }
+            interruptor(this, "Linterna automática con poca luz", "Se enciende sola si la imagen está oscura un momento", aj.linternaAuto) { aj.linternaAuto = it }
+            interruptor(this, "Acercar solo (zoom automático)", "Si ve un código pero es demasiado pequeño para leerlo, acerca la imagen poco a poco", aj.zoomAuto) { aj.zoomAuto = it }
+        }
+
+        col.addView(ui.titulo("Varios códigos juntos"))
+        ui.tarjeta(col) {
+            interruptor(this, "Leer solo lo que está en el centro (mira)", "Pinta una mira en el centro y solo lee el código que la toca", aj.soloMira) { aj.soloMira = it }
+            addView(ui.texto("Si hay varios códigos a la vez, la imagen se para y tocas el que quieras. Con un tipo preferido, ese se lee directo sin preguntar.", 13f, ui.cMuted))
+            val tipos = es.kalvo.escanerqr.nucleo.Preferido.entries
+            addView(ui.boton("Preferir tipo: ${aj.preferido.nombre}", contorno = true) {
+                MaterialAlertDialogBuilder(act).setTitle("Preferir tipo")
+                    .setSingleChoiceItems(tipos.map { it.nombre }.toTypedArray(), aj.preferido.ordinal) { d, i -> d.dismiss(); aj.preferido = tipos[i]; refrescar() }
+                    .show()
+            }, LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = ui.px(8) })
         }
 
         col.addView(ui.titulo("Buscar en la web"))

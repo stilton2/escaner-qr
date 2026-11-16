@@ -12,8 +12,8 @@ android {
         applicationId = "es.kalvo.escanerqr"
         minSdk = 30
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.4"
+        versionCode = 7
+        versionName = "2.5"
         // The S24 is arm64; the library also ships x86 builds for emulators we do not need.
         ndk { abiFilters += setOf("arm64-v8a") }
     }

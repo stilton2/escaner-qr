@@ -22,6 +22,13 @@
         android:label="Diagnóstico de Wifis"
         android:targetPackage="es.kalvo.escanerqr" />
 
+    <!-- Test bench of the reader (S-J6), also only by adb: `adb shell am instrument -w es.kalvo.escanerqr/.Banco`.
+         Reads sample pictures put in the app's own folder and prints only counts and times. -->
+    <instrumentation
+        android:name=".Banco"
+        android:label="Banco de pruebas del lector"
+        android:targetPackage="es.kalvo.escanerqr" />
+
     <application
         android:name=".App"
         android:allowBackup="false"

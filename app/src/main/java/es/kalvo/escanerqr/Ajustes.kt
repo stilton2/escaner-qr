@@ -27,6 +27,17 @@ class Ajustes(ctx: Context) {
     // Cámara
     var frontal: Boolean get() = b("frontal", false); set(v) = pon("frontal", v)
     var linternaAlAbrir: Boolean get() = b("linternaAlAbrir", false); set(v) = pon("linternaAlAbrir", v)
+    // S-J6
+    /** Zoom in by itself when a code is seen but is too small to read. */
+    var zoomAuto: Boolean get() = b("zoomAuto", true); set(v) = pon("zoomAuto", v)
+    /** Torch on by itself when the picture is dark (off by default). */
+    var linternaAuto: Boolean get() = b("linternaAuto", false); set(v) = pon("linternaAuto", v)
+    /** Only read the code touching the crosshair in the middle (off by default). */
+    var soloMira: Boolean get() = b("soloMira", false); set(v) = pon("soloMira", v)
+    /** «Preferir tipo»: ordinal of nucleo.Preferido (0 = Ninguno). */
+    var preferido: es.kalvo.escanerqr.nucleo.Preferido
+        get() = es.kalvo.escanerqr.nucleo.Preferido.entries.getOrElse(p.getInt("preferido", 0)) { es.kalvo.escanerqr.nucleo.Preferido.NINGUNO }
+        set(v) = p.edit().putInt("preferido", v.ordinal).apply()
 
     /** Web search address; `{code}` is replaced by what was read. */
     var buscador: String

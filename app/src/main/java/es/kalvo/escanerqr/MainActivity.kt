@@ -30,6 +30,10 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.UseCaseGroup
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.ResolutionSelector
@@ -43,10 +47,16 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.slider.Slider
+import es.kalvo.escanerqr.nucleo.Cerca
 import es.kalvo.escanerqr.nucleo.Contenido
+import es.kalvo.escanerqr.nucleo.Decision
+import es.kalvo.escanerqr.nucleo.Eleccion
+import es.kalvo.escanerqr.nucleo.Hallado
+import es.kalvo.escanerqr.nucleo.LuzAuto
+import es.kalvo.escanerqr.nucleo.ZoomAuto
 import es.kalvo.escanerqr.nucleo.Resumenes
 import es.kalvo.escanerqr.wifis.PanelWifis
-import zxingcpp.BarcodeReader
+import android.util.Log
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -76,11 +86,24 @@ class MainActivity : AppCompatActivity() {
     private var camara: Camera? = null
     private var linterna = false
     private val ejecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val lector: BarcodeReader by lazy { Lector.paraCamara() }
+    private val lectorCam = LectorCamara()
     @Volatile private var pausado = false
     private var pendiente: Leido? = null
-    private var ignorarTexto: String? = null
+    /** Codes just read that are still in front of the camera: not again until [ignorarHasta]. */
+    private var ignorados: Set<String> = emptySet()
     private var ignorarHasta = 0L
+    // S-J6: automatic zoom, torch, «too close» hint, several codes.
+    private lateinit var marcas: Marcas
+    private lateinit var visor: Visor
+    private var zoomBase: Float? = null
+    private var zoomDelUsuario = false
+    private var ultimoZoomAuto = 0L
+    private var ultimoEnfoque = 0L
+    private var ultimoVisto = 0L
+    private var avisoHasta = 0L
+    private val luz = LuzAuto()
+    private var estadistica = Estadistica()
+    @Volatile private var haciendoFoto = false
 
     private val pedirCamara = registerForActivityResult(ActivityResultContracts.RequestPermission()) { si ->
         if (si) { sinPermiso.visibility = View.GONE; enlazarCamara() } else mostrarSinPermiso()
@@ -152,7 +175,7 @@ class MainActivity : AppCompatActivity() {
         historial.vista.visibility = if (id == 2) View.VISIBLE else View.GONE
         ajustesPanel.vista.visibility = if (id == 3) View.VISIBLE else View.GONE
         wifis.vista.visibility = if (id == 4) View.VISIBLE else View.GONE
-        if (id == 1) arrancarCamara() else pararCamara()
+        if (id == 1) { visor.mira = aj.soloMira; arrancarCamara() } else pararCamara()
         if (id == 2) historial.refrescar()
         if (id == 3) ajustesPanel.refrescar()
         if (id == 4) wifis.mostrar() else wifis.ocultar()
@@ -164,10 +187,13 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         // Coming back from the result: do not read again at once the same code that is still in front of the camera.
-        pendiente?.let { ignorarTexto = it.texto; ignorarHasta = SystemClock.elapsedRealtime() + 2500 }
+        pendiente?.let { ignorados = ignorados + it.texto; ignorarHasta = SystemClock.elapsedRealtime() + 2500 }
         pendiente = null
         pausado = false
         tarjetaManual.visibility = View.GONE
+        if (::marcas.isInitialized) marcas.ocultar()
+        volverZoom()
+        if (::visor.isInitialized) visor.mira = aj.soloMira
         if (actual == 1) arrancarCamara()
         if (actual == 2) historial.refrescar()
         if (actual == 4) wifis.mostrar()
@@ -175,6 +201,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        ejecutor.execute { lectorCam.cerrar() }
         ejecutor.shutdown()
         if (::wifis.isInitialized) wifis.cerrar()
     }
@@ -188,7 +215,8 @@ class MainActivity : AppCompatActivity() {
         val f = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         preview = PreviewView(this).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
         f.addView(preview, MATCH_PARENT, MATCH_PARENT)
-        f.addView(Visor(this), MATCH_PARENT, MATCH_PARENT)
+        visor = Visor(this).apply { mira = aj.soloMira }
+        f.addView(visor, MATCH_PARENT, MATCH_PARENT)
 
         // Pinch to zoom, tap to focus.
         val pellizco = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -196,6 +224,7 @@ class MainActivity : AppCompatActivity() {
                 val c = camara ?: return true
                 val z = c.cameraInfo.zoomState.value ?: return true
                 c.cameraControl.setZoomRatio((z.zoomRatio * d.scaleFactor).coerceIn(z.minZoomRatio, z.maxZoomRatio))
+                zoomDelUsuario = true; zoomBase = null
                 return true
             }
         })
@@ -204,7 +233,12 @@ class MainActivity : AppCompatActivity() {
             if (e.action == MotionEvent.ACTION_UP && !pellizco.isInProgress) {
                 camara?.let { c ->
                     val p = preview.meteringPointFactory.createPoint(e.x, e.y)
-                    c.cameraControl.startFocusAndMetering(FocusMeteringAction.Builder(p).build())
+                    val fut = c.cameraControl.startFocusAndMetering(FocusMeteringAction.Builder(p).build())
+                    // S-J6: if it cannot focus there, it is usually too close.
+                    fut.addListener({
+                        val ok = try { fut.get().isFocusSuccessful } catch (x: Exception) { true }
+                        if (!ok) avisoTemporal("No enfoca: si está muy cerca, aléjate un poco y usa el zoom")
+                    }, ContextCompat.getMainExecutor(this))
                 }
             }
             true
@@ -215,6 +249,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
             setPadding(ui.px(12), ui.px(12), ui.px(12), ui.px(12))
+            addView(botonRedondo(R.drawable.ic_foto, "Foto: leer con una foto a máxima resolución") { tomarFoto() })
             addView(botonRedondo(R.drawable.ic_galeria, "Leer desde una imagen") { elegirImagen.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
             btnLinterna = botonRedondo(R.drawable.ic_linterna, "Linterna") { ponerLinterna(!linterna) }
             addView(btnLinterna)
@@ -228,7 +263,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(ui.px(24), ui.px(8), ui.px(24), ui.px(16))
         }
         aviso = TextView(this).apply {
-            text = "Apunta a un código QR o de barras"
+            text = TEXTO_AVISO
             setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER
             setShadowLayer(6f, 0f, 0f, Color.BLACK)
         }
@@ -237,7 +272,7 @@ class MainActivity : AppCompatActivity() {
             valueFrom = 0f; valueTo = 1f; value = 0f
             contentDescription = "Zoom"
             setLabelFormatter { "Zoom" }
-            addOnChangeListener { _, v, desdeUsuario -> if (desdeUsuario) camara?.cameraControl?.setLinearZoom(v) }
+            addOnChangeListener { _, v, desdeUsuario -> if (desdeUsuario) { camara?.cameraControl?.setLinearZoom(v); zoomDelUsuario = true; zoomBase = null } }
         }
         abajo.addView(zoom, MATCH_PARENT, WRAP_CONTENT)
         f.addView(abajo, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.BOTTOM))
@@ -279,6 +314,16 @@ class MainActivity : AppCompatActivity() {
             }.apply { setTextColor(Color.WHITE); iconTint = android.content.res.ColorStateList.valueOf(Color.WHITE) },
                 LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = ui.px(10) })
         }
+        // S-J6: several codes at once: frozen picture with a box on each.
+        marcas = Marcas(this, ui,
+            elegido = { h -> marcas.ocultar(); val l = Leido(h.texto, h.formato, h.metadata); pendiente = l; Procesar.nuevo(this, l, desdeCamara = true) },
+            todos = { l -> guardarTodos(l) },
+            seguir = { l ->
+                // «Seguir buscando»: none of these; leave them alone 3 s so you can aim somewhere else.
+                marcas.ocultar(); ignorados = l.map { it.texto }.toSet(); ignorarHasta = SystemClock.elapsedRealtime() + 3000; pausado = false
+            })
+        f.addView(marcas.vista, MATCH_PARENT, MATCH_PARENT)
+
         f.addView(sinPermiso, MATCH_PARENT, MATCH_PARENT)
         return f
     }
@@ -312,7 +357,11 @@ class MainActivity : AppCompatActivity() {
         proveedor?.unbindAll()
         camara = null
         linterna = false
+        zoomBase = null
+        luz.reiniciar()
     }
+
+    private var intentosVista = 0
 
     private fun enlazarCamara() {
         if (!tienePermiso() || actual != 1) return
@@ -325,17 +374,28 @@ class MainActivity : AppCompatActivity() {
             }, ContextCompat.getMainExecutor(this))
             return
         }
+        // The viewport (what the screen shows) exists once the view is laid out; wait for it a moment.
+        val puerto = preview.viewPort
+        if (puerto == null && intentosVista++ < 5) { preview.post { enlazarCamara() }; return }
+        intentosVista = 0
         p.unbindAll()
-        val vista = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
+        zoomDelUsuario = false; zoomBase = null; luz.reiniciar()
+        // S-J6: 4:3 like the sensor (more picture than 16:9) and more detail for small and far codes.
+        val cuatroTercios = AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
+        val vista = Preview.Builder()
+            .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(cuatroTercios).build())
+            .build().also { it.setSurfaceProvider(preview.surfaceProvider) }
         val analisis = ImageAnalysis.Builder()
-            .setResolutionSelector(ResolutionSelector.Builder().setResolutionStrategy(
-                ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)).build())
+            .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(cuatroTercios).setResolutionStrategy(
+                ResolutionStrategy(ANALISIS, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)).build())
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
         analisis.setAnalyzer(ejecutor) { img -> analizar(img) }
         val sel = if (aj.frontal) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
         try {
-            camara = p.bindToLifecycle(this, sel, vista, analisis)
+            // Same viewport for both: the frame read is exactly what you see, so the boxes fall on the codes.
+            val grupo = UseCaseGroup.Builder().addUseCase(vista).addUseCase(analisis).apply { puerto?.let { setViewPort(it) } }.build()
+            camara = p.bindToLifecycle(this, sel, grupo)
         } catch (e: Exception) {
             if (aj.frontal) { aj.frontal = false; enlazarCamara(); return }
             Toast.makeText(this, "No puedo abrir la cámara: ${e.message}", Toast.LENGTH_LONG).show()
@@ -359,9 +419,10 @@ class MainActivity : AppCompatActivity() {
     /** Runs on the camera thread. */
     private fun analizar(img: ImageProxy) {
         try {
-            if (pausado) return
-            val r = lector.read(img).firstNotNullOfOrNull { Lector.convertir(it) } ?: return
-            runOnUiThread { detectado(r) }
+            if (pausado || haciendoFoto) return
+            val f = lectorCam.leer(img)
+            estadistica.apuntar(img.width, img.height, img.cropRect.width(), img.cropRect.height(), f)
+            runOnUiThread { fotograma(f) }
         } catch (e: Exception) {
             // A bad frame: try the next one.
         } finally {
@@ -369,10 +430,83 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** What to do with one frame read (main thread). */
+    private fun fotograma(f: Fotograma) {
+        if (pausado || actual != 1 || isFinishing) return
+        val ahora = SystemClock.elapsedRealtime()
+        if (aj.linternaAuto && !linterna && luz.ver(f.brillo, ahora)) {
+            ponerLinterna(true); avisoTemporal("Poca luz: linterna encendida")
+        }
+        val hallados = if (ahora < ignorarHasta) f.hallados.filter { it.texto !in ignorados } else f.hallados
+        if (hallados.isEmpty()) {
+            if (f.errados.isNotEmpty()) { ultimoVisto = ahora; codigoSinLeer(f, ahora) }
+            // Nothing seen for a while: back to the zoom you had.
+            if (zoomBase != null && ahora - ultimoVisto > 5000) volverZoom()
+            if (ahora > avisoHasta && aviso.text != TEXTO_AVISO && !aj.continua) aviso.text = TEXTO_AVISO
+            return
+        }
+        when (val d = Eleccion.decidir(hallados, aj.soloMira, aj.preferido)) {
+            is Decision.Nada -> {}
+            is Decision.Uno -> detectado(aLeido(d.h))
+            is Decision.Varios -> if (aj.continua) d.lista.forEach { detectado(aLeido(it)) } else congelar(d.lista)
+        }
+    }
+
+    private fun aLeido(h: Hallado) = Leido(h.texto, h.formato, h.metadata)
+
+    /** A code that was seen but not read: zoom in if it is small, warn if it is too close, focus on it. */
+    private fun codigoSinLeer(f: Fotograma, ahora: Long) {
+        val c = camara ?: return
+        val grande = f.errados.maxByOrNull { it.lado(f.aspecto) } ?: return
+        val lado = grande.lado(f.aspecto)
+        if (Cerca.demasiado(lado)) { avisoTemporal("Aléjate un poco y usa el zoom"); return }
+        if (ahora - ultimoEnfoque > 1500 && preview.width > 0) {
+            ultimoEnfoque = ahora
+            val p = preview.meteringPointFactory.createPoint(grande.cx * preview.width, grande.cy * preview.height)
+            c.cameraControl.startFocusAndMetering(FocusMeteringAction.Builder(p).setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS).build())
+        }
+        if (!aj.zoomAuto || zoomDelUsuario || aj.frontal) return
+        val z = c.cameraInfo.zoomState.value ?: return
+        val nuevo = ZoomAuto.siguiente(lado, grande.cx, grande.cy, z.zoomRatio, z.maxZoomRatio, ahora - ultimoZoomAuto) ?: return
+        if (zoomBase == null) zoomBase = z.zoomRatio
+        ultimoZoomAuto = ahora
+        c.cameraControl.setZoomRatio(nuevo)
+        avisoTemporal("Acercando…")
+    }
+
+    private fun volverZoom() {
+        val b = zoomBase ?: return
+        zoomBase = null
+        camara?.cameraControl?.setZoomRatio(b)
+    }
+
+    private fun avisoTemporal(s: String) {
+        aviso.text = s
+        avisoHasta = SystemClock.elapsedRealtime() + 2500
+    }
+
+    /** Several codes: stop the picture and draw a box on each. */
+    private fun congelar(l: List<Hallado>) {
+        pausado = true
+        val foto = try { preview.bitmap } catch (e: Exception) { null }
+        marcas.mostrar(foto, l)
+        Procesar.avisar(this)
+    }
+
+    /** «Guardar todos»: all of them to the history, without opening any; then keep scanning. */
+    private fun guardarTodos(l: List<Hallado>) {
+        marcas.ocultar()
+        var n = 0
+        for (h in l) { Procesar.guardar(this, aLeido(h)); n++ }
+        ignorados = l.map { it.texto }.toSet(); ignorarHasta = SystemClock.elapsedRealtime() + 4000
+        Toast.makeText(this, "Guardados $n códigos en el historial", Toast.LENGTH_SHORT).show()
+        pausado = false
+    }
+
     private fun detectado(r: Leido) {
         if (pausado || actual != 1 || isFinishing) return
         val ahora = SystemClock.elapsedRealtime()
-        if (r.texto == ignorarTexto && ahora < ignorarHasta) return
+        if (r.texto in ignorados && ahora < ignorarHasta) return
         when {
             aj.manual -> {
                 pausado = true; pendiente = r
@@ -381,10 +515,11 @@ class MainActivity : AppCompatActivity() {
             }
             aj.continua -> {
                 // Same code again within 3 s: it is still in front of the camera, not a new one.
-                ignorarTexto = r.texto; ignorarHasta = ahora + 3000
+                ignorados = (if (ahora < ignorarHasta) ignorados else emptySet()) + r.texto; ignorarHasta = ahora + 3000
                 Procesar.nuevo(this, r, desdeCamara = true, continua = true)
                 val res = Resumenes.de(r.texto, r.formato)
                 aviso.text = "Guardado (${res.tipo}): ${res.principal.take(60)}"
+                avisoHasta = ahora + 2500
             }
             else -> {
                 pausado = true; pendiente = r
@@ -393,38 +528,131 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------- foto a máxima resolución (S-J6) ----------------
+
+    /** «Foto»: one photo at the camera's highest resolution, read with every pass (hard cases: tiny, far, worn). */
+    private fun tomarFoto() {
+        val p = proveedor ?: return
+        if (camara == null || haciendoFoto) return
+        haciendoFoto = true
+        aviso.text = "Haciendo la foto… no muevas el móvil"
+        avisoHasta = SystemClock.elapsedRealtime() + 60000
+        val captura = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+            .setResolutionSelector(ResolutionSelector.Builder().setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY).build())
+            .build()
+        val sel = if (aj.frontal) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+        try {
+            // Analysis off for a moment (three streams at full size do not fit in every phone).
+            p.unbindAll()
+            val vista = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
+            camara = p.bindToLifecycle(this, sel, vista, captura)
+            if (linterna) camara?.cameraControl?.enableTorch(true)
+        } catch (e: Exception) {
+            haciendoFoto = false; aviso.text = TEXTO_AVISO
+            Toast.makeText(this, "No puedo hacer la foto: ${e.message}", Toast.LENGTH_LONG).show()
+            enlazarCamara(); return
+        }
+        captura.takePicture(ejecutor, object : ImageCapture.OnImageCapturedCallback() {
+            override fun onCaptureSuccess(img: ImageProxy) {
+                val lista = try {
+                    val buf = img.planes[0].buffer
+                    val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
+                    img.close()
+                    runOnUiThread { aviso.text = "Buscando códigos en la foto…"; enlazarCamaraTrasFoto() }
+                    val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    Lector.deBitmap(bmp).also { bmp.recycle() }
+                } catch (e: Throwable) { try { img.close() } catch (x: Exception) {}; null }
+                runOnUiThread { haciendoFoto = false; avisoHasta = 0; aviso.text = TEXTO_AVISO; mostrarLista(lista, "la foto") }
+            }
+
+            override fun onError(e: ImageCaptureException) {
+                runOnUiThread {
+                    haciendoFoto = false; avisoHasta = 0; aviso.text = TEXTO_AVISO
+                    Toast.makeText(this@MainActivity, "No se pudo hacer la foto", Toast.LENGTH_LONG).show()
+                    enlazarCamaraTrasFoto()
+                }
+            }
+        })
+    }
+
+    private fun enlazarCamaraTrasFoto() {
+        val l = linterna
+        enlazarCamara()
+        if (l) ponerLinterna(true)
+    }
+
     // ---------------- imagen ----------------
 
     private fun leerImagen(uri: Uri) {
         Toast.makeText(this, "Buscando códigos en la imagen…", Toast.LENGTH_SHORT).show()
         Thread {
-            val res = try { Result.success(Lector.deImagen(this, uri)) } catch (e: Exception) { Result.failure(e) }
-            runOnUiThread {
-                val lista = res.getOrNull()
-                when {
-                    lista == null -> Toast.makeText(this, "No he podido abrir la imagen.", Toast.LENGTH_LONG).show()
-                    lista.isEmpty() -> MaterialAlertDialogBuilder(this)
-                        .setTitle("Ningún código")
-                        .setMessage("No he encontrado ningún código en la imagen. Prueba con una foto más nítida o más cerca.")
-                        .setPositiveButton("Vale", null).show()
-                    lista.size == 1 -> Procesar.nuevo(this, lista[0], desdeCamara = false)
-                    else -> MaterialAlertDialogBuilder(this)
-                        .setTitle("Hay ${lista.size} códigos: elige uno")
-                        .setItems(lista.map { "${it.formato}: ${it.texto.lineSequence().first().take(50)}" }.toTypedArray()) { _, i ->
-                            Procesar.nuevo(this, lista[i], desdeCamara = false)
-                        }
-                        .setNegativeButton("Cancelar", null).show()
-                }
-            }
+            val lista = try { Lector.deImagen(this, uri) } catch (e: Exception) { null }
+            runOnUiThread { mostrarLista(lista, "la imagen") }
         }.start()
+    }
+
+    /** What a picture or photo gave: nothing, one (open it) or several (choose). */
+    private fun mostrarLista(lista: List<Leido>?, donde: String) {
+        if (isFinishing) return
+        when {
+            lista == null -> Toast.makeText(this, "No he podido abrir $donde.", Toast.LENGTH_LONG).show()
+            lista.isEmpty() -> MaterialAlertDialogBuilder(this)
+                .setTitle("Ningún código")
+                .setMessage("No he encontrado ningún código en $donde. Prueba con una foto más nítida o más cerca.")
+                .setPositiveButton("Vale", null).show()
+            lista.size == 1 -> { pausado = true; pendiente = lista[0]; Procesar.nuevo(this, lista[0], desdeCamara = false) }
+            else -> MaterialAlertDialogBuilder(this)
+                .setTitle("Hay ${lista.size} códigos: elige uno")
+                .setItems(lista.map { "${it.formato}: ${it.texto.lineSequence().first().take(50)}" }.toTypedArray()) { _, i ->
+                    pausado = true; pendiente = lista[i]
+                    Procesar.nuevo(this, lista[i], desdeCamara = false)
+                }
+                .setNegativeButton("Cancelar", null).show()
+        }
+    }
+
+    /** Frame size and time per frame in the log, every 60 frames (numbers only: `adb logcat -s EscanerQR`). */
+    private class Estadistica {
+        private var n = 0; private var suma = 0L; private var max = 0L
+        private val porPasada = HashMap<String, Int>()
+        fun apuntar(w: Int, h: Int, cw: Int, ch: Int, f: Fotograma) {
+            n++; suma += f.ms; if (f.ms > max) max = f.ms
+            if (f.pasada.isNotEmpty()) porPasada[f.pasada] = (porPasada[f.pasada] ?: 0) + 1
+            if (n == 60) {
+                Log.i("EscanerQR", "camara ${w}x$h vista ${cw}x$ch ms media ${suma / n} max $max leidos_por_pasada $porPasada")
+                n = 0; suma = 0; max = 0; porPasada.clear()
+            }
+        }
+    }
+
+    companion object {
+        /** Analysis size asked for (4:3, CameraX takes the closest the phone gives); see docs § v2.5 for the measures. */
+        val ANALISIS = Size(2560, 1920)
+        const val TEXTO_AVISO = "Apunta a un código QR o de barras"
     }
 
     /** Corners of the viewfinder (only a guide: the whole picture is read). */
     private class Visor(ctx: Context) : View(ctx) {
+        private val d = ctx.resources.displayMetrics.density
         private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 4 * ctx.resources.displayMetrics.density; strokeCap = Paint.Cap.ROUND
+            color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 4 * d; strokeCap = Paint.Cap.ROUND
         }
+        private val pm = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ContextCompat.getColor(ctx, R.color.ambar); style = Paint.Style.STROKE; strokeWidth = 3 * d; strokeCap = Paint.Cap.ROUND
+            setShadowLayer(4 * d, 0f, 0f, Color.BLACK)
+        }
+        /** S-J6 «Leer solo lo que está en el centro»: crosshair in the exact middle (what is read). */
+        var mira = false
+            set(v) { field = v; invalidate() }
+
         override fun onDraw(c: Canvas) {
+            if (mira) {
+                val cx = width / 2f; val cy = height / 2f; val r = 14 * d; val l = 26 * d
+                c.drawCircle(cx, cy, r, pm)
+                c.drawLine(cx - l, cy, cx - r / 2, cy, pm); c.drawLine(cx + r / 2, cy, cx + l, cy, pm)
+                c.drawLine(cx, cy - l, cx, cy - r / 2, pm); c.drawLine(cx, cy + r / 2, cx, cy + l, pm)
+            }
             val lado = minOf(width, height) * 0.62f
             val r = RectF((width - lado) / 2, (height - lado) / 2.4f, (width + lado) / 2, (height - lado) / 2.4f + lado)
             val t = lado * 0.16f
