@@ -186,7 +186,6 @@ class MainActivity : AppCompatActivity() {
         if (id == 4) wifis.mostrar() else wifis.ocultar()
     }
 
-    fun irAHistorial() { nav.elegir(2) }
     fun irAEscanear() { nav.elegir(1) }
 
     override fun onResume() {

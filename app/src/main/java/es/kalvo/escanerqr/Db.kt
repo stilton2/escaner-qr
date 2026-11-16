@@ -139,8 +139,6 @@ class Db private constructor(private val ctx: Context) : SQLiteOpenHelper(ctx, "
             m
         }
 
-    fun cuantas(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM lecturas", null).use { it.moveToFirst(); it.getInt(0) }
-
     fun ponerNotas(id: Long, notas: String) {
         writableDatabase.update("lecturas", ContentValues().apply { put("notas", notas) }, "id = ?", arrayOf(id.toString()))
     }

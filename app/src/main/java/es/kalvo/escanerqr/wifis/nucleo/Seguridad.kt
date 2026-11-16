@@ -37,27 +37,6 @@ enum class Seguridad(val nombre: String, val qr: String, val cmd: String, val ll
             }
         }
 
-        // WifiConfiguration.KeyMgmt bit numbers (stable since Android 10).
-        private const val NONE = 0; private const val WPA_PSK = 1; private const val WPA_EAP = 2
-        private const val IEEE8021X = 3; private const val WPA2_PSK = 4; private const val FT_PSK = 6
-        private const val FT_EAP = 7; private const val SAE = 8; private const val OWE_BIT = 9
-        private const val SUITE_B = 10; private const val PSK_SHA256 = 11; private const val EAP_SHA256 = 12
-        private const val WAPI_PSK = 13
-
-        /**
-         * From the KeyMgmt bits of every copy Android gives for one network (a WPA2 network comes twice:
-         * once as PSK and once as SAE) and whether any copy has a WEP key.
-         */
-        fun desdeKeyMgmt(bits: Collection<Int>, tieneWep: Boolean): Seguridad = when {
-            bits.any { it == WPA_PSK || it == WPA2_PSK || it == FT_PSK || it == PSK_SHA256 || it == WAPI_PSK } -> WPA
-            bits.any { it == SAE } -> WPA3
-            bits.any { it == WPA_EAP || it == IEEE8021X || it == FT_EAP || it == SUITE_B || it == EAP_SHA256 } -> EMPRESA
-            tieneWep -> WEP
-            bits.any { it == NONE } -> ABIERTA
-            bits.any { it == OWE_BIT } -> OWE
-            else -> ABIERTA
-        }
-
         /** From the `T:` of a wifi QR or the `tipo` extra of the intent (lenient: WPA2, WPA3, open…). */
         fun desdeTexto(t: String?, hayClave: Boolean): Seguridad = when (t?.trim()?.uppercase()) {
             "WPA", "WPA2", "WPA/WPA2", "WPA2/WPA3", "PSK" -> WPA

@@ -33,7 +33,6 @@ class Ui(val ctx: Context, @Suppress("unused") private val ref: View? = null) {
     val cPrimary get() = c(R.color.ambar_texto)
     val cMuted get() = c(R.color.texto_suave)
     val cText get() = c(R.color.texto)
-    val cError get() = c(R.color.error)
     val cFondo get() = c(R.color.fondo)
     val cSuperficie get() = c(R.color.superficie)
     val cBorde get() = c(R.color.borde)

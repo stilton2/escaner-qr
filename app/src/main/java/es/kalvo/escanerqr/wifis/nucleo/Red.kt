@@ -24,10 +24,8 @@ data class Red(
     /** Last time connected: the newest of Samsung's and Android's (Android's only lasts until the phone restarts). */
     val ultimaVez: Long? get() = listOfNotNull(uso?.ultimaVez, detalle?.ultimaConexion).maxOrNull()
 
-    val clavePerdida get() = seguridad.llevaClave && clave == null
     val olvidable get() = !sugerencia && id >= 0
     fun datos() = DatosRed(ssid, seguridad, clave, oculta)
-    fun clavePara(): String = "$id|${origen.paquete}|$ssid|${seguridad.name}"
 }
 
 object Combinar {

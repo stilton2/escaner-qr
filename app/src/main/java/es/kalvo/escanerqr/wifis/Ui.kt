@@ -18,7 +18,6 @@ class Ui(private val ctx: Context) {
     fun px(v: Int) = (v * dp).toInt()
 
     fun color(v: View, attr: Int) = MaterialColors.getColor(v, attr)
-    fun primary(v: View) = color(v, com.google.android.material.R.attr.colorPrimary)
     fun muted(v: View) = color(v, com.google.android.material.R.attr.colorOnSurfaceVariant)
     fun normal(v: View) = color(v, com.google.android.material.R.attr.colorOnSurface)
     fun error(v: View) = color(v, com.google.android.material.R.attr.colorError)
